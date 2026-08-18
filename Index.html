@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:#f4f6f9;color:#182230}
+    header{background:#17365D;color:white;padding:20px 24px}
+    header h1{margin:0;font-size:24px} header p{margin:6px 0 0;opacity:.85}
+    .wrap{max-width:1100px;margin:auto;padding:20px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    .card{background:white;border-radius:14px;padding:18px;box-shadow:0 3px 12px #00000012}
+    .rank{font-size:13px;color:#697586}.house{font-size:21px;font-weight:700;margin:8px 0}.points{font-size:30px;font-weight:800}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tab{border:0;border-radius:10px;padding:10px 15px;cursor:pointer;background:white}
+    .tab.active{background:#17365D;color:white}
+    .panel{display:none}.panel.active{display:block}
+    label{display:block;font-weight:700;margin:10px 0 5px}select,input{width:100%;padding:11px;border:1px solid #d0d7de;border-radius:9px}
+    button.primary{margin-top:14px;background:#17365D;color:white;border:0;padding:12px 18px;border-radius:9px;cursor:pointer}
+    table{width:100%;border-collapse:collapse;background:white}.tablewrap{overflow:auto}
+    th,td{padding:11px;border-bottom:1px solid #e5e7eb;text-align:left}th{background:#17365D;color:white}
+    .status{margin:12px 0;padding:10px;border-radius:8px;background:#e8f5e9}
+    @media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}} @media(max-width:500px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header><h1>🏆 Sistem Mata Rumah Sukan</h1><p>SK Agama (MIS) Miri</p></header>
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('dash',this)">Dashboard</button>
+    <button class="tab" onclick="showTab('result',this)">Masukkan Keputusan</button>
+    <button class="tab" onclick="showTab('bonus',this)">Bonus / Penalti</button>
+  </div>
+
+  <section id="dash" class="panel active">
+    <div class="card"><b>Tahun Aktif:</b> <span id="year">...</span></div><br>
+    <div id="cards" class="grid"></div>
+  </section>
+
+  <section id="result" class="panel">
+    <div class="card">
+      <h2>Masukkan Keputusan</h2>
+      <label>Acara</label><select id="event"></select>
+      <label>Kedudukan</label><select id="position"><option value="1">Johan</option><option value="2">Naib Johan</option><option value="3">Ketiga</option><option value="4">Keempat</option></select>
+      <label>Rumah</label><select id="house"></select>
+      <label>Nama Peserta</label><input id="name" placeholder="Nama murid / pasukan">
+      <label>ID Peserta</label><input id="pid" placeholder="Pilihan">
+      <label>Catatan</label><input id="note">
+      <button class="primary" onclick="submitResult()">Simpan Keputusan</button>
+      <div id="resultStatus"></div>
+    </div>
+  </section>
+
+  <section id="bonus" class="panel">
+    <div class="card">
+      <h2>Bonus / Penalti</h2>
+      <label>Rumah</label><select id="bonusHouse"></select>
+      <label>Jenis</label><select id="bonusType"><option>Bonus</option><option>Penalti</option></select>
+      <label>Mata</label><input id="bonusPoints" type="number" placeholder="Contoh: 5 atau -5">
+      <label>Sebab</label><input id="reason">
+      <label>Diluluskan Oleh</label><input id="approvedBy">
+      <button class="primary" onclick="submitBonus()">Simpan</button>
+      <div id="bonusStatus"></div>
+    </div>
+  </section>
+</div>
+<script>
+let activeYear;
+function showTab(id,btn){document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active')}
+function load(){
+  google.script.run.withSuccessHandler(renderDash).withFailureHandler(showError).getDashboard();
+  google.script.run.withSuccessHandler(renderEvents).getEvents();
+}
+function renderDash(d){
+  activeYear=d.year; document.getElementById('year').textContent=d.year;
+  const cards=document.getElementById('cards'); cards.innerHTML='';
+  d.houses.forEach(h=>cards.innerHTML+=`<div class="card"><div class="rank">KEDUDUKAN #${h.rank}</div><div class="house">${h.name}</div><div class="points">${h.points} mata</div><div>🥇 ${h.gold} &nbsp; 🥈 ${h.silver} &nbsp; 🥉 ${h.bronze}</div></div>`);
+  google.script.run.withSuccessHandler(renderHouses).getHouses(d.year);
+}
+function renderHouses(hs){
+  ['house','bonusHouse'].forEach(id=>{const s=document.getElementById(id);s.innerHTML=hs.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')});
+}
+function renderEvents(es){document.getElementById('event').innerHTML=es.map(e=>`<option value="${e.id}">${e.id} — ${e.name}</option>`).join('')}
+function submitResult(){
+  const data={year:activeYear,eventId:event.value,position:position.value,houseId:house.value,name:name.value,participantId:pid.value,note:note.value};
+  google.script.run.withSuccessHandler(x=>{resultStatus.className='status';resultStatus.textContent='Keputusan disimpan: '+x.id;load()}).withFailureHandler(showError).saveResult(data);
+}
+function submitBonus(){
+  const data={year:activeYear,houseId:bonusHouse.value,type:bonusType.value,points:bonusPoints.value,reason:reason.value,approvedBy:approvedBy.value};
+  google.script.run.withSuccessHandler(x=>{bonusStatus.className='status';bonusStatus.textContent='Rekod disimpan: '+x.id;load()}).withFailureHandler(showError).saveBonus(data);
+}
+function showError(e){alert(e.message||e)}
+load();
+</script>
+</body>
+</html>
