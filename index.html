@@ -251,6 +251,33 @@
 
     tr:last-child td { border-bottom:0; }
 
+
+    .admin-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+    .admin-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:18px}
+    .admin-tab{border:1px solid var(--border);background:#fff;padding:9px 13px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:800;color:#536170}
+    .admin-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .admin-panel{display:none}
+    .admin-panel.active{display:block}
+    .admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+    .mini-stat{border:1px solid var(--border);border-radius:12px;padding:13px;background:#fbfcfe}
+    .mini-stat b{display:block;font-size:20px;margin-top:4px}
+    .inline-form{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end}
+    .inline-form .wide{grid-column:span 2}
+    .admin-table td .btn{padding:7px 9px;font-size:11px}
+    .danger{background:#fff0f0!important;color:#b42318!important;border-color:#f3c1c1!important}
+    .success{background:#eefaf4!important;color:#147a4b!important;border-color:#bde6d0!important}
+    .muted-box{background:#f7f9fc;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);font-size:12px}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:center;justify-content:center;z-index:100;padding:18px}
+    .modal-backdrop.show{display:flex}
+    .modal{background:#fff;border-radius:16px;width:min(760px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+    .modal-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .modal-body{padding:20px}
+    .modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+    .close-btn{border:0;background:#f2f4f7;width:34px;height:34px;border-radius:9px;cursor:pointer}
+    @media(max-width:900px){.mini-grid{grid-template-columns:repeat(2,1fr)}.inline-form{grid-template-columns:1fr 1fr}.inline-form .wide{grid-column:span 2}}
+    @media(max-width:700px){.mini-grid{grid-template-columns:1fr 1fr}.inline-form{grid-template-columns:1fr}.inline-form .wide{grid-column:span 1}}
+
     .form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
 
     .field label {
@@ -702,49 +729,159 @@
 
       <section class="section" id="admin">
         <div class="card">
-          <div class="card-header">
+          <div class="admin-toolbar">
             <div>
-              <div class="card-title">⚙️ Pentadbiran</div>
-              <div class="card-sub">
-                Modul Admin akan ditambah selepas asas sistem diuji.
+              <div class="card-title">⚙️ Pusat Pentadbiran</div>
+              <div class="card-sub">Semua data asas kejohanan diurus dari sini.</div>
+            </div>
+            <div class="admin-actions">
+              <span class="badge" id="adminActiveYear">Tahun: -</span>
+              <button class="btn btn-light" onclick="loadAdminAll()">↻ Segar</button>
+            </div>
+          </div>
+
+          <div class="admin-tabs">
+            <button class="admin-tab active" onclick="showAdminTab('years',this)">📅 Tahun</button>
+            <button class="admin-tab" onclick="showAdminTab('houses',this)">🏠 Rumah</button>
+            <button class="admin-tab" onclick="showAdminTab('students',this)">👥 Murid</button>
+            <button class="admin-tab" onclick="showAdminTab('events',this)">🏃 Acara</button>
+            <button class="admin-tab" onclick="showAdminTab('users',this)">👨‍🏫 Guru/Pengguna</button>
+            <button class="admin-tab" onclick="showAdminTab('points',this)">🎯 Mata</button>
+          </div>
+
+          <div class="admin-panel active" id="admin-years">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📅 Tahun Kejohanan</div>
+                <div class="card-sub">Setiap tahun mempunyai rumah dan rekod tersendiri.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openYearModal()">+ Tambah Tahun</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Tahun</th><th>Nama Kejohanan</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminYearsTable"><tr><td colspan="4" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-houses">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🏠 Rumah Sukan</div>
+                <div class="card-sub">Nama rumah boleh berubah mengikut tahun tanpa merosakkan rekod lama.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openHouseModal()">+ Tambah Rumah</button>
+            </div>
+            <div class="muted-box" style="margin-bottom:14px">
+              Sistem trek memerlukan <strong>4 rumah aktif</strong>. Setiap rumah akan mendapat 2 lorong dalam modul undian.
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Nama Rumah</th><th>Tahun</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminHousesTable"><tr><td colspan="5" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-students">
+            <div class="card-header">
+              <div>
+                <div class="card-title">👥 Data Murid</div>
+                <div class="card-sub">Admin memasukkan murid sekali; guru rumah hanya memilih peserta.</div>
+              </div>
+              <div class="admin-actions">
+                <button class="btn btn-light" onclick="downloadStudentTemplate()">⬇ Template CSV</button>
+                <button class="btn btn-light" onclick="document.getElementById('studentCsv').click()">📥 Import CSV</button>
+                <button class="btn btn-primary" onclick="openStudentModal()">+ Tambah Murid</button>
+                <input type="file" id="studentCsv" accept=".csv,text/csv" style="display:none" onchange="importStudentCsv(this)">
               </div>
             </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="card" style="box-shadow:none">
-              <div class="card-title">🏠 Rumah Sukan</div>
-              <p style="font-size:12px;color:#6b7785;line-height:1.6">
-                Nama rumah boleh ditukar setiap tahun tanpa mengganggu rekod tahun terdahulu.
-              </p>
+            <div class="form-grid">
+              <div class="field"><label>CARI</label><input id="adminStudentSearch" placeholder="Nama / ID / kelas / darjah..." oninput="loadAdminStudents()"></div>
+              <div class="field"><label>TAHUN</label><select id="adminStudentYear" onchange="loadAdminStudents()"></select></div>
             </div>
-
-            <div class="card" style="box-shadow:none">
-              <div class="card-title">👥 Data Murid</div>
-              <p style="font-size:12px;color:#6b7785;line-height:1.6">
-                Admin akan memasukkan semua murid sekolah. Guru rumah hanya memilih peserta.
-              </p>
-            </div>
-
-            <div class="card" style="box-shadow:none">
-              <div class="card-title">🏃 Acara</div>
-              <p style="font-size:12px;color:#6b7785;line-height:1.6">
-                Acara boleh ditambah, diubah atau dinyahaktifkan.
-              </p>
-            </div>
-
-            <div class="card" style="box-shadow:none">
-              <div class="card-title">🎯 Mata</div>
-              <p style="font-size:12px;color:#6b7785;line-height:1.6">
-                Tetapan mata kedudukan boleh diubah mengikut keperluan sekolah.
-              </p>
+            <div id="studentImportMsg" class="message"></div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Nama</th><th>Darjah</th><th>Kelas</th><th>Jantina</th><th>Rumah</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminStudentsTable"><tr><td colspan="7" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
             </div>
           </div>
+
+          <div class="admin-panel" id="admin-events">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🏃 Pengurusan Acara</div>
+                <div class="card-sub">Tambah, ubah atau nyahaktifkan acara.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openEventModal()">+ Tambah Acara</button>
+            </div>
+            <div class="field" style="max-width:260px;margin-bottom:14px">
+              <label>TAHUN</label><select id="adminEventYear" onchange="loadAdminEvents()"></select>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Acara</th><th>Kategori</th><th>Jantina</th><th>Darjah</th><th>Lorong</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminEventsTable"><tr><td colspan="6" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-users">
+            <div class="card-header">
+              <div>
+                <div class="card-title">👨‍🏫 Guru Rumah / Pengguna</div>
+                <div class="card-sub">Tetapkan akaun Google kepada peranan dan rumah.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Pengguna</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Nama</th><th>Email</th><th>Peranan</th><th>Rumah</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminUsersTable"><tr><td colspan="6" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-points">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🎯 Tetapan Mata</div>
+                <div class="card-sub">Ubah mata kedudukan 1 hingga 8 tanpa mengubah kod sistem.</div>
+              </div>
+              <button class="btn btn-primary" onclick="saveAllPoints()">💾 Simpan Semua</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Kedudukan</th><th>Mata</th><th>Pingat</th></tr></thead>
+                <tbody id="adminPointsTable"><tr><td colspan="3" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+            <div id="pointsMsg" class="message"></div>
+          </div>
+
+          <div id="adminMsg" class="message"></div>
         </div>
       </section>
-
     </div>
   </main>
+</div>
+
+
+<div class="modal-backdrop" id="adminModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="card-title" id="modalTitle">Borang</div>
+      <button class="close-btn" onclick="closeAdminModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-light" onclick="closeAdminModal()">Batal</button>
+      <button class="btn btn-primary" id="modalSaveBtn">Simpan</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -784,6 +921,10 @@
 
     document.getElementById("houseBadge").textContent =
       "Rumah: " + (currentUser.houseId || "Admin");
+
+    const adminNav = Array.from(document.querySelectorAll(".nav button"))
+      .find(function(btn){ return btn.textContent.indexOf("Admin") !== -1; });
+    if (adminNav) adminNav.style.display = isAdmin() ? "flex" : "none";
   }
 
   function loadDashboard() {
@@ -1102,6 +1243,362 @@
       .getIndividualRanking(currentYear);
   }
 
+
+  /* =========================
+     ADMIN MODULE — FASA 2A
+     ========================= */
+
+  let adminYears = [];
+  let adminHouses = [];
+  let adminStudents = [];
+  let adminEvents = [];
+  let adminUsers = [];
+  let adminPoints = [];
+
+  function isAdmin() {
+    return currentUser && String(currentUser.role).toUpperCase() === "ADMIN";
+  }
+
+  function ensureAdmin() {
+    if (!isAdmin()) {
+      showMessage("adminMsg", "Akses Admin diperlukan.", false);
+      return false;
+    }
+    return true;
+  }
+
+  function showAdminTab(id, button) {
+    document.querySelectorAll(".admin-panel").forEach(function(p){ p.classList.remove("active"); });
+    document.querySelectorAll(".admin-tab").forEach(function(b){ b.classList.remove("active"); });
+    document.getElementById("admin-" + id).classList.add("active");
+    if (button) button.classList.add("active");
+
+    if (id === "years") loadAdminYears();
+    if (id === "houses") loadAdminHouses();
+    if (id === "students") loadAdminStudents();
+    if (id === "events") loadAdminEvents();
+    if (id === "users") loadAdminUsers();
+    if (id === "points") loadAdminPoints();
+  }
+
+  function loadAdminAll() {
+    if (!ensureAdmin()) return;
+    loadAdminYears();
+    loadAdminHouses();
+    loadAdminStudents();
+    loadAdminEvents();
+    loadAdminUsers();
+    loadAdminPoints();
+  }
+
+  function loadAdminYears() {
+    google.script.run.withSuccessHandler(function(data){
+      adminYears = data || [];
+      document.getElementById("adminActiveYear").textContent =
+        "Tahun: " + (adminYears.find(function(x){return x.active;})?.year || currentYear || "-");
+
+      var selects = ["adminStudentYear","adminEventYear"];
+      selects.forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        var selected = Number(el.value || currentYear);
+        el.innerHTML = adminYears.map(function(x){
+          return '<option value="'+x.year+'" '+(Number(x.year)===selected?'selected':'')+'>'+escapeHtml(x.year+' — '+x.name)+'</option>';
+        }).join("");
+      });
+
+      document.getElementById("adminYearsTable").innerHTML = adminYears.length ? adminYears.map(function(x){
+        return '<tr>' +
+          '<td><strong>'+x.year+'</strong></td>' +
+          '<td>'+escapeHtml(x.name)+'</td>' +
+          '<td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td>' +
+          '<td><div class="admin-actions">' +
+          '<button class="btn btn-light" onclick="openYearModal('+x.year+')">Edit</button>' +
+          (x.active ? '' : '<button class="btn btn-light" onclick="activateAdminYear('+x.year+')">Aktifkan</button><button class="btn danger" onclick="deleteAdminYear('+x.year+')">Buang</button>') +
+          '</div></td></tr>';
+      }).join("") : '<tr><td colspan="4" class="empty">Belum ada tahun.</td></tr>';
+    }).withFailureHandler(adminError).listYears();
+  }
+
+  function activateAdminYear(year) {
+    if (!ensureAdmin()) return;
+    if (!confirm("Jadikan " + year + " sebagai tahun aktif?")) return;
+    google.script.run.withSuccessHandler(function(){
+      currentYear = year;
+      loadDashboard();
+      loadEvents();
+      loadAdminAll();
+      showMessage("adminMsg","Tahun "+year+" telah diaktifkan.",true);
+    }).withFailureHandler(adminError).setActiveYear(year);
+  }
+
+  function deleteAdminYear(year) {
+    if (!ensureAdmin()) return;
+    if (!confirm("Buang tahun " + year + "? Rekod operasi lain tidak dipadam, tetapi tahun ini tidak lagi boleh dipilih.")) return;
+    google.script.run.withSuccessHandler(loadAdminAll).withFailureHandler(adminError).deleteYear(year);
+  }
+
+  function openYearModal(year) {
+    if (!ensureAdmin()) return;
+    var item = adminYears.find(function(x){return Number(x.year)===Number(year);});
+    var isEdit = !!item;
+    openAdminModal(isEdit ? "Edit Tahun" : "Tambah Tahun", `
+      <div class="form-grid">
+        <div class="field"><label>TAHUN</label><input id="mYear" type="number" min="2000" value="${item ? item.year : (new Date().getFullYear())}" ${isEdit?'disabled':''}></div>
+        <div class="field"><label>NAMA KEJOHANAN</label><input id="mYearName" value="${escapeAttr(item ? item.name : 'Sukan Tahunan '+(new Date().getFullYear()))}"></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label><input id="mYearActive" type="checkbox" ${item?.active?'checked':''}> Jadikan tahun aktif</label></div>
+    `, function(){
+      var y = Number(document.getElementById("mYear").value);
+      var name = document.getElementById("mYearName").value.trim();
+      var active = document.getElementById("mYearActive").checked;
+      google.script.run.withSuccessHandler(function(){
+        closeAdminModal(); currentYear = active ? y : currentYear; loadAdminAll(); loadDashboard(); loadEvents();
+      }).withFailureHandler(adminError).saveYear({year:y,name:name,active:active});
+    });
+  }
+
+  function loadAdminHouses() {
+    var y = Number(currentYear || getAdminSelectedYear());
+    google.script.run.withSuccessHandler(function(data){
+      adminHouses = data || [];
+      document.getElementById("adminHousesTable").innerHTML = adminHouses.length ? adminHouses.map(function(x){
+        return '<tr><td><strong>'+escapeHtml(x.id)+'</strong></td><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+y+'</td><td><span class="badge success">AKTIF</span></td><td><button class="btn btn-light" onclick="openHouseModal(\''+escapeAttr(x.id)+'\')">Edit</button></td></tr>';
+      }).join("") : '<tr><td colspan="5" class="empty">Tiada rumah aktif untuk tahun ini.</td></tr>';
+    }).withFailureHandler(adminError).listHouses(y);
+  }
+
+  function openHouseModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminHouses.find(function(x){return String(x.id)===String(id);});
+    var houseId = item ? item.id : "";
+    openAdminModal(item ? "Edit Rumah Sukan" : "Tambah Rumah Sukan", `
+      <div class="form-grid">
+        <div class="field"><label>ID RUMAH</label><input id="mHouseId" value="${escapeAttr(houseId)}" placeholder="H1" ${item?'disabled':''}></div>
+        <div class="field"><label>NAMA RUMAH</label><input id="mHouseName" value="${escapeAttr(item ? item.name : '')}" placeholder="Contoh: Rumah Merah"></div>
+      </div>
+    `, function(){
+      var hid = document.getElementById("mHouseId").value.trim();
+      var name = document.getElementById("mHouseName").value.trim();
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminHouses();loadDashboard();}).withFailureHandler(adminError)
+        .saveHouse({year:Number(currentYear),id:hid,name:name,active:true});
+    });
+  }
+
+  function loadAdminStudents() {
+    var y = Number(document.getElementById("adminStudentYear")?.value || currentYear);
+    var q = document.getElementById("adminStudentSearch")?.value || "";
+    google.script.run.withSuccessHandler(function(data){
+      adminStudents = data || [];
+      var houses = adminHouses || [];
+      document.getElementById("adminStudentsTable").innerHTML = adminStudents.length ? adminStudents.map(function(x){
+        var hn = houses.find(function(h){return String(h.id)===String(x.houseId);});
+        return '<tr>' +
+          '<td>'+escapeHtml(x.id)+'</td><td><strong>'+escapeHtml(x.name)+'</strong></td>' +
+          '<td>'+escapeHtml(x.grade)+'</td><td>'+escapeHtml(x.className)+'</td><td>'+escapeHtml(x.gender)+'</td>' +
+          '<td>'+escapeHtml(hn ? hn.name : (x.houseId || '-'))+'</td>' +
+          '<td><div class="admin-actions"><button class="btn btn-light" onclick="openStudentModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminStudent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>';
+      }).join("") : '<tr><td colspan="7" class="empty">Tiada murid ditemui.</td></tr>';
+    }).withFailureHandler(adminError).listStudents(q,y);
+  }
+
+  function openStudentModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminStudents.find(function(x){return String(x.id)===String(id);});
+    var houses = adminHouses || [];
+    var houseOptions = '<option value="">-- Belum ditetapkan --</option>' + houses.map(function(h){
+      return '<option value="'+escapeAttr(h.id)+'" '+(item && String(item.houseId)===String(h.id)?'selected':'')+'>'+escapeHtml(h.name)+'</option>';
+    }).join("");
+    openAdminModal(item ? "Edit Murid" : "Tambah Murid", `
+      <div class="form-grid">
+        <div class="field"><label>ID MURID</label><input id="mStudentId" value="${escapeAttr(item ? item.id : '')}" placeholder="Contoh: M001" ${item?'disabled':''}></div>
+        <div class="field"><label>NAMA PENUH</label><input id="mStudentName" value="${escapeAttr(item ? item.name : '')}"></div>
+        <div class="field"><label>NO. KP</label><input id="mStudentKp" value="${escapeAttr(item ? item.noKp : '')}"></div>
+        <div class="field"><label>DARJAH</label><select id="mStudentGrade">
+          <option value="">Pilih...</option>${['1','2','3','4','5','6'].map(function(g){return '<option '+(item&&String(item.grade)===g?'selected':'')+' value="'+g+'">Darjah '+g+'</option>';}).join("")}
+        </select></div>
+        <div class="field"><label>KELAS</label><input id="mStudentClass" value="${escapeAttr(item ? item.className : '')}"></div>
+        <div class="field"><label>JANTINA</label><select id="mStudentGender"><option value="">Pilih...</option><option '+(item&&item.gender==='Lelaki'?'selected':'')+'>Lelaki</option><option '+(item&&item.gender==='Perempuan'?'selected':'')+'>Perempuan</option></select></div>
+        <div class="field"><label>RUMAH TAHUN ${currentYear}</label><select id="mStudentHouse">${houseOptions}</select></div>
+      </div>
+    `, function(){
+      var data = {
+        id:document.getElementById("mStudentId").value.trim() || ("M"+Date.now()),
+        name:document.getElementById("mStudentName").value.trim(),
+        noKp:document.getElementById("mStudentKp").value.trim(),
+        grade:document.getElementById("mStudentGrade").value,
+        className:document.getElementById("mStudentClass").value.trim(),
+        gender:document.getElementById("mStudentGender").value,
+        houseId:document.getElementById("mStudentHouse").value,
+        year:Number(currentYear),
+        active:true
+      };
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminStudents();}).withFailureHandler(adminError).saveStudent(data);
+    });
+  }
+
+  function deactivateAdminStudent(id) {
+    if (!confirm("Nyahaktifkan murid ini?")) return;
+    google.script.run.withSuccessHandler(loadAdminStudents).withFailureHandler(adminError).deactivateStudent(id);
+  }
+
+  function downloadStudentTemplate() {
+    var csv = "MURID_ID,NAME,NO_KP,GRADE,CLASS_NAME,GENDER,HOUSE_ID\nM001,Ali bin Abu,,6,6 Al-Farabi,Lelaki,H1\nM002,Siti binti Ahmad,,6,6 Al-Farabi,Perempuan,H2\n";
+    var blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "template_murid_sukan.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importStudentCsv(input) {
+    if (!ensureAdmin() || !input.files.length) return;
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var rows = parseCsv(e.target.result);
+        if (rows.length < 2) throw new Error("CSV tiada data murid.");
+        var headers = rows[0].map(function(x){return x.trim().toUpperCase();});
+        var data = rows.slice(1).filter(function(r){return r.some(function(x){return String(x).trim();});}).map(function(r){
+          var o={}; headers.forEach(function(h,i){o[h]=String(r[i]||"").trim();}); return o;
+        });
+        google.script.run.withSuccessHandler(function(res){
+          showMessage("studentImportMsg","Berjaya import "+res.count+" murid.",true);
+          input.value=""; loadAdminStudents();
+        }).withFailureHandler(adminError).importStudents(data);
+      } catch(err) { showMessage("studentImportMsg",err.message,false); input.value=""; }
+    };
+    reader.readAsText(file);
+  }
+
+  function parseCsv(text) {
+    var rows=[], row=[], field="", quoted=false;
+    for (var i=0;i<text.length;i++) {
+      var c=text[i], n=text[i+1];
+      if (c==='"') {
+        if (quoted && n==='"') { field+='"'; i++; }
+        else quoted=!quoted;
+      } else if (c===',' && !quoted) { row.push(field); field=""; }
+      else if ((c==='\n' || c==='\r') && !quoted) {
+        if (c==='\r' && n==='\n') i++;
+        row.push(field); field="";
+        if (row.length && row.some(function(x){return x!=="";})) rows.push(row);
+        row=[];
+      } else field+=c;
+    }
+    if (field!=="" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function loadAdminEvents() {
+    var y = Number(document.getElementById("adminEventYear")?.value || currentYear);
+    google.script.run.withSuccessHandler(function(data){
+      adminEvents = data || [];
+      document.getElementById("adminEventsTable").innerHTML = adminEvents.length ? adminEvents.map(function(x){
+        return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.category)+'</td><td>'+escapeHtml(x.gender)+'</td><td>'+escapeHtml(x.ageGroup)+'</td><td>'+(x.laneEvent?'Ya':'Tidak')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openEventModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminEvent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>';
+      }).join("") : '<tr><td colspan="6" class="empty">Tiada acara aktif.</td></tr>';
+    }).withFailureHandler(adminError).listEvents(y);
+  }
+
+  function openEventModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminEvents.find(function(x){return String(x.id)===String(id);});
+    var y = Number(document.getElementById("adminEventYear")?.value || currentYear);
+    openAdminModal(item ? "Edit Acara" : "Tambah Acara", `
+      <div class="form-grid">
+        <div class="field"><label>NAMA ACARA</label><input id="mEventName" value="${escapeAttr(item ? item.name : '')}" placeholder="100 Meter"></div>
+        <div class="field"><label>KATEGORI</label><select id="mEventCategory">${['TREK','PADANG','LAIN'].map(function(v){return '<option '+(item&&item.category===v?'selected':'')+'>'+v+'</option>';}).join("")}</select></div>
+        <div class="field"><label>JANTINA</label><select id="mEventGender">${['Lelaki','Perempuan','Campuran'].map(function(v){return '<option '+(item&&item.gender===v?'selected':'')+'>'+v+'</option>';}).join("")}</select></div>
+        <div class="field"><label>DARJAH / KUMPULAN</label><input id="mEventAge" value="${escapeAttr(item ? item.ageGroup : '')}" placeholder="Darjah 6"></div>
+        <div class="field"><label><input id="mEventLane" type="checkbox" ${item?.laneEvent?'checked':''}> Acara menggunakan lorong</label></div>
+      </div>
+    `, function(){
+      var data={id:item?item.id:"",year:y,name:document.getElementById("mEventName").value.trim(),category:document.getElementById("mEventCategory").value,gender:document.getElementById("mEventGender").value,ageGroup:document.getElementById("mEventAge").value.trim(),laneEvent:document.getElementById("mEventLane").checked,active:true};
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminEvents();loadEvents();loadDashboard();}).withFailureHandler(adminError).saveEvent(data);
+    });
+  }
+
+  function deactivateAdminEvent(id) {
+    if (!confirm("Nyahaktifkan acara ini?")) return;
+    google.script.run.withSuccessHandler(function(){loadAdminEvents();loadEvents();loadDashboard();}).withFailureHandler(adminError).deactivateEvent(id);
+  }
+
+  function loadAdminUsers() {
+    google.script.run.withSuccessHandler(function(data){
+      adminUsers=data||[];
+      document.getElementById("adminUsersTable").innerHTML = adminUsers.length ? adminUsers.map(function(x){
+        var hn=(adminHouses||[]).find(function(h){return String(h.id)===String(x.houseId);});
+        return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.email)+'</td><td>'+escapeHtml(x.role)+'</td><td>'+escapeHtml(hn?hn.name:(x.houseId||'-'))+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><button class="btn btn-light" onclick="openUserModal(\''+escapeAttr(x.email)+'\')">Edit</button></td></tr>';
+      }).join("") : '<tr><td colspan="6" class="empty">Tiada pengguna.</td></tr>';
+    }).withFailureHandler(adminError).listUsers();
+  }
+
+  function openUserModal(email) {
+    if (!ensureAdmin()) return;
+    var item=adminUsers.find(function(x){return String(x.email).toLowerCase()===String(email||"").toLowerCase();});
+    var houses=adminHouses||[];
+    var houseOptions='<option value="">-- Tiada rumah --</option>'+houses.map(function(h){return '<option value="'+escapeAttr(h.id)+'" '+(item&&String(item.houseId)===String(h.id)?'selected':'')+'>'+escapeHtml(h.name)+'</option>';}).join("");
+    openAdminModal(item ? "Edit Pengguna" : "Tambah Pengguna", `
+      <div class="form-grid">
+        <div class="field"><label>EMAIL GOOGLE</label><input id="mUserEmail" value="${escapeAttr(item?item.email:'')}" ${item?'disabled':''} placeholder="guru@sekolah.edu.my"></div>
+        <div class="field"><label>NAMA</label><input id="mUserName" value="${escapeAttr(item?item.name:'')}"></div>
+        <div class="field"><label>PERANAN</label><select id="mUserRole"><option value="GURU_RUMAH" ${item&&item.role==='GURU_RUMAH'?'selected':''}>GURU RUMAH</option><option value="URUS_SETIA" ${item&&item.role==='URUS_SETIA'?'selected':''}>URUS SETIA</option><option value="ADMIN" ${item&&item.role==='ADMIN'?'selected':''}>ADMIN</option></select></div>
+        <div class="field"><label>RUMAH</label><select id="mUserHouse">${houseOptions}</select></div>
+        <div class="field"><label><input id="mUserActive" type="checkbox" ${!item||item.active?'checked':''}> Akaun aktif</label></div>
+      </div>
+    `, function(){
+      var data={email:document.getElementById("mUserEmail").value.trim(),name:document.getElementById("mUserName").value.trim(),role:document.getElementById("mUserRole").value,houseId:document.getElementById("mUserHouse").value,active:document.getElementById("mUserActive").checked};
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminUsers();}).withFailureHandler(adminError).saveUser(data);
+    });
+  }
+
+  function loadAdminPoints() {
+    google.script.run.withSuccessHandler(function(data){
+      adminPoints=data||[];
+      var map={}; adminPoints.forEach(function(x){map[x.position]=x;});
+      document.getElementById("adminPointsTable").innerHTML = Array.from({length:8},function(_,i){
+        var p=i+1, x=map[p]||{points:0,medal:""};
+        return '<tr><td><strong>'+p+'</strong></td><td><input type="number" min="0" id="point-'+p+'" value="'+Number(x.points||0)+'" style="max-width:120px"></td><td><select id="medal-'+p+'" style="max-width:180px"><option value="">-</option><option '+(x.medal==='EMAS'?'selected':'')+'>EMAS</option><option '+(x.medal==='PERAK'?'selected':'')+'>PERAK</option><option '+(x.medal==='GANGSA'?'selected':'')+'>GANGSA</option></select></td></tr>';
+      }).join("");
+    }).withFailureHandler(adminError).listPoints();
+  }
+
+  function saveAllPoints() {
+    if (!ensureAdmin()) return;
+    var jobs=[];
+    for(var p=1;p<=8;p++){
+      jobs.push({position:p,points:Number(document.getElementById("point-"+p).value||0),medal:document.getElementById("medal-"+p).value});
+    }
+    var done=0;
+    jobs.forEach(function(x){
+      google.script.run.withSuccessHandler(function(){
+        done++; if(done===jobs.length){showMessage("pointsMsg","Semua tetapan mata berjaya disimpan.",true);loadAdminPoints();}
+      }).withFailureHandler(adminError).savePoint(x);
+    });
+  }
+
+  function getAdminSelectedYear() {
+    return Number(document.getElementById("adminStudentYear")?.value || currentYear || new Date().getFullYear());
+  }
+
+  function openAdminModal(title, body, saveFn) {
+    document.getElementById("modalTitle").textContent=title;
+    document.getElementById("modalBody").innerHTML=body;
+    document.getElementById("modalSaveBtn").onclick=saveFn;
+    document.getElementById("adminModal").classList.add("show");
+  }
+
+  function closeAdminModal() {
+    document.getElementById("adminModal").classList.remove("show");
+  }
+
+  function adminError(error) {
+    showMessage("adminMsg", error && error.message ? error.message : String(error), false);
+  }
+
+
   function showSection(id, button) {
     document.querySelectorAll(".section").forEach(function(section) {
       section.classList.remove("active");
@@ -1132,6 +1629,7 @@
     }
 
     if (id === "individual") loadIndividualRanking();
+    if (id === "admin") loadAdminAll();
 
     if (window.innerWidth <= 760) {
       document.getElementById("sidebar").classList.remove("open");
