@@ -1,95 +1,1167 @@
-<!DOCTYPE html> 
-<html>
+<!DOCTYPE html>
+<html lang="ms">
 <head>
   <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Sukan SK Agama (MIS) Miri</title>
+
   <style>
-    *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:#f4f6f9;color:#182230}
-    header{background:#17365D;color:white;padding:20px 24px}
-    header h1{margin:0;font-size:24px} header p{margin:6px 0 0;opacity:.85}
-    .wrap{max-width:1100px;margin:auto;padding:20px}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-    .card{background:white;border-radius:14px;padding:18px;box-shadow:0 3px 12px #00000012}
-    .rank{font-size:13px;color:#697586}.house{font-size:21px;font-weight:700;margin:8px 0}.points{font-size:30px;font-weight:800}
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tab{border:0;border-radius:10px;padding:10px 15px;cursor:pointer;background:white}
-    .tab.active{background:#17365D;color:white}
-    .panel{display:none}.panel.active{display:block}
-    label{display:block;font-weight:700;margin:10px 0 5px}select,input{width:100%;padding:11px;border:1px solid #d0d7de;border-radius:9px}
-    button.primary{margin-top:14px;background:#17365D;color:white;border:0;padding:12px 18px;border-radius:9px;cursor:pointer}
-    table{width:100%;border-collapse:collapse;background:white}.tablewrap{overflow:auto}
-    th,td{padding:11px;border-bottom:1px solid #e5e7eb;text-align:left}th{background:#17365D;color:white}
-    .status{margin:12px 0;padding:10px;border-radius:8px;background:#e8f5e9}
-    @media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}} @media(max-width:500px){.grid{grid-template-columns:1fr}}
+    :root {
+      --navy:#102a43;
+      --navy2:#173f63;
+      --gold:#d6a84f;
+      --bg:#f4f7fb;
+      --card:#ffffff;
+      --text:#17202a;
+      --muted:#6b7785;
+      --border:#e5eaf0;
+      --green:#17845b;
+      --red:#c73b3b;
+      --shadow:0 8px 28px rgba(16,42,67,.08);
+    }
+
+    * { box-sizing:border-box; }
+
+    body {
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    button,input,select { font:inherit; }
+
+    .app { min-height:100vh; display:flex; }
+
+    .sidebar {
+      width:255px;
+      background:linear-gradient(180deg,var(--navy),#0b2033);
+      color:#fff;
+      position:fixed;
+      inset:0 auto 0 0;
+      z-index:20;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .brand {
+      padding:24px 20px 20px;
+      border-bottom:1px solid rgba(255,255,255,.1);
+    }
+
+    .brand-mark {
+      width:48px;
+      height:48px;
+      border-radius:13px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(214,168,79,.16);
+      border:1px solid rgba(214,168,79,.45);
+      font-size:24px;
+      margin-bottom:12px;
+    }
+
+    .brand-title { font-weight:800; line-height:1.25; font-size:16px; }
+    .brand-sub { color:rgba(255,255,255,.62); font-size:12px; margin-top:5px; }
+
+    .nav { padding:18px 12px; overflow:auto; flex:1; }
+
+    .nav-label {
+      color:rgba(255,255,255,.38);
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:1.2px;
+      padding:10px 12px 7px;
+      font-weight:800;
+    }
+
+    .nav button {
+      width:100%;
+      border:0;
+      background:transparent;
+      color:rgba(255,255,255,.76);
+      padding:12px 13px;
+      margin:2px 0;
+      border-radius:10px;
+      text-align:left;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:11px;
+    }
+
+    .nav button:hover,.nav button.active {
+      background:rgba(255,255,255,.10);
+      color:#fff;
+    }
+
+    .nav button.active { box-shadow:inset 3px 0 0 var(--gold); }
+    .nav-icon { width:22px; text-align:center; font-size:17px; }
+
+    .sidebar-footer {
+      padding:14px 16px;
+      border-top:1px solid rgba(255,255,255,.1);
+      font-size:11px;
+      color:rgba(255,255,255,.48);
+    }
+
+    .main { margin-left:255px; width:calc(100% - 255px); min-height:100vh; }
+
+    .topbar {
+      height:72px;
+      background:#fff;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 28px;
+      position:sticky;
+      top:0;
+      z-index:10;
+    }
+
+    .page-title { font-size:20px; font-weight:800; }
+    .page-sub { color:var(--muted); font-size:12px; margin-top:3px; }
+
+    .profile { display:flex; align-items:center; gap:10px; }
+    .avatar {
+      width:38px;
+      height:38px;
+      border-radius:50%;
+      background:var(--navy);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:800;
+    }
+
+    .profile-name { font-size:13px; font-weight:700; }
+    .profile-role { font-size:11px; color:var(--muted); }
+
+    .content { padding:26px; max-width:1450px; margin:auto; }
+    .section { display:none; }
+    .section.active { display:block; }
+
+    .welcome {
+      background:linear-gradient(135deg,var(--navy),var(--navy2));
+      color:#fff;
+      border-radius:20px;
+      padding:25px;
+      box-shadow:var(--shadow);
+      margin-bottom:20px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .welcome:after {
+      content:"🏆";
+      position:absolute;
+      right:25px;
+      top:10px;
+      font-size:90px;
+      opacity:.08;
+    }
+
+    .welcome h2 { margin:0 0 6px; font-size:24px; }
+    .welcome p { margin:0; color:rgba(255,255,255,.68); font-size:13px; }
+
+    .stats {
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:15px;
+      margin-bottom:20px;
+    }
+
+    .stat,.card {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+    }
+
+    .stat { padding:19px; }
+
+    .stat-top {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:700;
+    }
+
+    .stat-icon {
+      width:38px;
+      height:38px;
+      border-radius:11px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#eef3f8;
+      font-size:19px;
+    }
+
+    .stat-value { font-size:29px; font-weight:900; margin-top:13px; }
+    .stat-note { color:var(--muted); font-size:11px; margin-top:4px; }
+
+    .grid-2 { display:grid; grid-template-columns:1.3fr .7fr; gap:20px; }
+    .card { padding:20px; }
+
+    .card-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:16px;
+    }
+
+    .card-title { font-size:16px; font-weight:800; }
+    .card-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+
+    .houses { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+
+    .house {
+      border:1px solid var(--border);
+      border-radius:13px;
+      padding:16px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .house-bar { position:absolute; left:0; top:0; bottom:0; width:5px; }
+    .house-rank { color:var(--muted); font-size:11px; font-weight:800; }
+    .house-name { font-size:17px; font-weight:900; margin-top:6px; }
+    .house-points { font-size:27px; font-weight:900; margin-top:8px; }
+    .medals { font-size:12px; color:var(--muted); margin-top:6px; }
+
+    .table-wrap { overflow:auto; border:1px solid var(--border); border-radius:12px; }
+
+    table { width:100%; border-collapse:collapse; min-width:650px; }
+    th,td { padding:12px 14px; border-bottom:1px solid var(--border); text-align:left; font-size:12px; }
+    th {
+      background:#f7f9fc;
+      color:#536170;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.6px;
+    }
+
+    tr:last-child td { border-bottom:0; }
+
+    .form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+
+    .field label {
+      display:block;
+      font-size:11px;
+      font-weight:800;
+      margin-bottom:6px;
+      color:#4d5966;
+    }
+
+    .field input,.field select {
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:9px;
+      padding:11px 12px;
+      outline:none;
+      background:#fff;
+    }
+
+    .field input:focus,.field select:focus {
+      border-color:var(--navy2);
+      box-shadow:0 0 0 3px rgba(23,63,99,.08);
+    }
+
+    .btn {
+      border:0;
+      border-radius:9px;
+      padding:10px 14px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:12px;
+    }
+
+    .btn-primary { background:var(--navy); color:#fff; }
+    .btn-gold { background:var(--gold); color:#1c2630; }
+    .btn-light { background:#eef2f6; color:#273442; }
+
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+
+    .message {
+      display:none;
+      padding:11px 13px;
+      border-radius:9px;
+      margin-top:13px;
+      font-size:12px;
+    }
+
+    .message.ok { display:block; background:#e8f6ef; color:#14613f; }
+    .message.err { display:block; background:#fdecec; color:#8d2626; }
+
+    .student-list {
+      max-height:450px;
+      overflow:auto;
+      border:1px solid var(--border);
+      border-radius:11px;
+    }
+
+    .student {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:12px;
+      border-bottom:1px solid var(--border);
+    }
+
+    .student:last-child { border-bottom:0; }
+    .student input { width:17px; height:17px; }
+    .student-name { font-weight:700; font-size:12px; }
+    .student-meta { font-size:10px; color:var(--muted); margin-top:3px; }
+
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      padding:4px 8px;
+      border-radius:99px;
+      font-size:10px;
+      font-weight:800;
+      background:#eef2f6;
+      color:#536170;
+    }
+
+    .empty { padding:35px; text-align:center; color:var(--muted); font-size:12px; }
+
+    .mobile-toggle {
+      display:none;
+      border:0;
+      background:#eef2f6;
+      border-radius:9px;
+      width:40px;
+      height:40px;
+      cursor:pointer;
+    }
+
+    @media(max-width:1050px) {
+      .stats { grid-template-columns:repeat(2,1fr); }
+      .grid-2 { grid-template-columns:1fr; }
+    }
+
+    @media(max-width:760px) {
+      .sidebar { transform:translateX(-100%); transition:.2s; }
+      .sidebar.open { transform:translateX(0); }
+      .main { margin-left:0; width:100%; }
+      .mobile-toggle { display:block; }
+      .topbar { padding:0 16px; }
+      .content { padding:16px; }
+      .stats { grid-template-columns:1fr 1fr; gap:10px; }
+      .form-grid { grid-template-columns:1fr; }
+      .houses { grid-template-columns:1fr; }
+      .profile > div:not(.avatar) { display:none; }
+    }
+
+    @media(max-width:450px) {
+      .stats { grid-template-columns:1fr; }
+      .welcome h2 { font-size:20px; }
+    }
   </style>
 </head>
+
 <body>
-<header><h1>🏆 Sistem Mata Rumah Sukan</h1><p>SK Agama (MIS) Miri</p></header>
-<div class="wrap">
-  <div class="tabs">
-    <button class="tab active" onclick="showTab('dash',this)">Dashboard</button>
-    <button class="tab" onclick="showTab('result',this)">Masukkan Keputusan</button>
-    <button class="tab" onclick="showTab('bonus',this)">Bonus / Penalti</button>
-  </div>
+<div class="app">
 
-  <section id="dash" class="panel active">
-    <div class="card"><b>Tahun Aktif:</b> <span id="year">...</span></div><br>
-    <div id="cards" class="grid"></div>
-  </section>
-
-  <section id="result" class="panel">
-    <div class="card">
-      <h2>Masukkan Keputusan</h2>
-      <label>Acara</label><select id="event"></select>
-      <label>Kedudukan</label><select id="position"><option value="1">Johan</option><option value="2">Naib Johan</option><option value="3">Ketiga</option><option value="4">Keempat</option></select>
-      <label>Rumah</label><select id="house"></select>
-      <label>Nama Peserta</label><input id="name" placeholder="Nama murid / pasukan">
-      <label>ID Peserta</label><input id="pid" placeholder="Pilihan">
-      <label>Catatan</label><input id="note">
-      <button class="primary" onclick="submitResult()">Simpan Keputusan</button>
-      <div id="resultStatus"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">🏆</div>
+      <div class="brand-title">
+        SISTEM SUKAN<br>
+        SK AGAMA (MIS) MIRI
+      </div>
+      <div class="brand-sub">Pengurusan Sukan Tahunan</div>
     </div>
-  </section>
 
-  <section id="bonus" class="panel">
-    <div class="card">
-      <h2>Bonus / Penalti</h2>
-      <label>Rumah</label><select id="bonusHouse"></select>
-      <label>Jenis</label><select id="bonusType"><option>Bonus</option><option>Penalti</option></select>
-      <label>Mata</label><input id="bonusPoints" type="number" placeholder="Contoh: 5 atau -5">
-      <label>Sebab</label><input id="reason">
-      <label>Diluluskan Oleh</label><input id="approvedBy">
-      <button class="primary" onclick="submitBonus()">Simpan</button>
-      <div id="bonusStatus"></div>
+    <nav class="nav">
+      <div class="nav-label">Utama</div>
+
+      <button class="active" onclick="showSection('dashboard', this)">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+
+      <button onclick="showSection('registration', this)">
+        <span class="nav-icon">👥</span> Daftar Peserta
+      </button>
+
+      <button onclick="showSection('lanes', this)">
+        <span class="nav-icon">🎲</span> Undian Lorong
+      </button>
+
+      <button onclick="showSection('results', this)">
+        <span class="nav-icon">🏅</span> Keputusan
+      </button>
+
+      <div class="nav-label">Ranking</div>
+
+      <button onclick="showSection('individual', this)">
+        <span class="nav-icon">🏆</span> Peserta Terbaik
+      </button>
+
+      <button onclick="showSection('house-ranking', this)">
+        <span class="nav-icon">📈</span> Ranking Rumah
+      </button>
+
+      <div class="nav-label">Pentadbiran</div>
+
+      <button onclick="showSection('admin', this)">
+        <span class="nav-icon">⚙️</span> Admin
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      SK Agama (MIS) Miri<br>
+      Sistem Mata Sukan
     </div>
-  </section>
+  </aside>
+
+  <main class="main">
+
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
+
+        <div>
+          <div class="page-title" id="pageTitle">Dashboard</div>
+          <div class="page-sub" id="pageSub">
+            Ringkasan keseluruhan kejohanan
+          </div>
+        </div>
+      </div>
+
+      <div class="profile">
+        <div>
+          <div class="profile-name" id="profileName">Memuatkan...</div>
+          <div class="profile-role" id="profileRole">-</div>
+        </div>
+        <div class="avatar" id="avatar">?</div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <section class="section active" id="dashboard">
+        <div class="welcome">
+          <h2>Selamat datang ke Sistem Sukan 🏆</h2>
+          <p id="welcomeText">
+            Sistem pengurusan mata sukan SK Agama (MIS) Miri.
+          </p>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-top">
+              <span>TAHUN AKTIF</span>
+              <div class="stat-icon">📅</div>
+            </div>
+            <div class="stat-value" id="statYear">-</div>
+            <div class="stat-note">Tahun kejohanan</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>RUMAH SUKAN</span>
+              <div class="stat-icon">🏠</div>
+            </div>
+            <div class="stat-value" id="statHouses">4</div>
+            <div class="stat-note">Rumah aktif</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>ACARA</span>
+              <div class="stat-icon">🏃</div>
+            </div>
+            <div class="stat-value" id="statEvents">-</div>
+            <div class="stat-note">Acara aktif</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>STATUS</span>
+              <div class="stat-icon">🟢</div>
+            </div>
+            <div class="stat-value" style="font-size:20px">AKTIF</div>
+            <div class="stat-note">Sistem sedang berjalan</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Kedudukan Rumah Sukan</div>
+                <div class="card-sub">Mata terkini mengikut rumah</div>
+              </div>
+              <button class="btn btn-light" onclick="loadDashboard()">↻ Segar</button>
+            </div>
+
+            <div class="houses" id="houseCards">
+              <div class="empty">Memuatkan kedudukan...</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Ringkasan</div>
+                <div class="card-sub">Sistem mata sukan</div>
+              </div>
+            </div>
+
+            <div id="summary">
+              <div class="empty">Memuatkan...</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="section" id="registration">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">👥 Pendaftaran Peserta</div>
+              <div class="card-sub">
+                Guru rumah memilih murid yang telah dimasukkan oleh Admin.
+              </div>
+            </div>
+            <span class="badge" id="houseBadge">Rumah: -</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA</label>
+              <select id="eventSelect" onchange="loadStudents()">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>CARI MURID</label>
+              <input id="studentSearch"
+                     placeholder="Taip nama atau kelas..."
+                     oninput="loadStudents()">
+            </div>
+          </div>
+
+          <div style="margin:12px 0;font-size:12px;color:#6b7785">
+            Pilih peserta:
+          </div>
+
+          <div class="student-list" id="studentList">
+            <div class="empty">Pilih acara terlebih dahulu.</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary"
+                    onclick="registerParticipants()">
+              ✓ Daftarkan Peserta
+            </button>
+
+            <button class="btn btn-light"
+                    onclick="loadStudents()">
+              ↻ Segar
+            </button>
+          </div>
+
+          <div id="registrationMessage" class="message"></div>
+        </div>
+      </section>
+
+      <section class="section" id="lanes">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🎲 Undian Lorong</div>
+              <div class="card-sub">
+                8 lorong • 2 lorong setiap rumah
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA</label>
+              <select id="laneEvent">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-gold"
+                    onclick="generateLanes()">
+              🎲 Jana Undian Lorong
+            </button>
+          </div>
+
+          <div id="laneResult" style="margin-top:20px"></div>
+        </div>
+      </section>
+
+      <section class="section" id="results">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏅 Keputusan Acara</div>
+              <div class="card-sub">
+                Modul keputusan akan disambungkan selepas modul pendaftaran dan lorong diuji.
+              </div>
+            </div>
+          </div>
+
+          <div class="empty">
+            Modul keputusan — Fasa seterusnya.
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="individual">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏆 Peserta Terbaik Keseluruhan</div>
+              <div class="card-sub">
+                Ranking berdasarkan jumlah mata individu.
+              </div>
+            </div>
+
+            <button class="btn btn-light"
+                    onclick="loadIndividualRanking()">
+              ↻ Segar
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nama</th>
+                  <th>Darjah</th>
+                  <th>Rumah</th>
+                  <th>Mata</th>
+                  <th>🥇</th>
+                  <th>🥈</th>
+                  <th>🥉</th>
+                </tr>
+              </thead>
+              <tbody id="individualTable">
+                <tr>
+                  <td colspan="8" class="empty">Memuatkan ranking...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="house-ranking">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📈 Ranking Rumah Sukan</div>
+              <div class="card-sub">
+                Kedudukan berdasarkan mata terkumpul.
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kedudukan</th>
+                  <th>Rumah</th>
+                  <th>Mata</th>
+                  <th>🥇</th>
+                  <th>🥈</th>
+                  <th>🥉</th>
+                </tr>
+              </thead>
+              <tbody id="houseTable">
+                <tr>
+                  <td colspan="6" class="empty">Memuatkan...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="admin">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">⚙️ Pentadbiran</div>
+              <div class="card-sub">
+                Modul Admin akan ditambah selepas asas sistem diuji.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card" style="box-shadow:none">
+              <div class="card-title">🏠 Rumah Sukan</div>
+              <p style="font-size:12px;color:#6b7785;line-height:1.6">
+                Nama rumah boleh ditukar setiap tahun tanpa mengganggu rekod tahun terdahulu.
+              </p>
+            </div>
+
+            <div class="card" style="box-shadow:none">
+              <div class="card-title">👥 Data Murid</div>
+              <p style="font-size:12px;color:#6b7785;line-height:1.6">
+                Admin akan memasukkan semua murid sekolah. Guru rumah hanya memilih peserta.
+              </p>
+            </div>
+
+            <div class="card" style="box-shadow:none">
+              <div class="card-title">🏃 Acara</div>
+              <p style="font-size:12px;color:#6b7785;line-height:1.6">
+                Acara boleh ditambah, diubah atau dinyahaktifkan.
+              </p>
+            </div>
+
+            <div class="card" style="box-shadow:none">
+              <div class="card-title">🎯 Mata</div>
+              <p style="font-size:12px;color:#6b7785;line-height:1.6">
+                Tetapan mata kedudukan boleh diubah mengikut keperluan sekolah.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
 </div>
+
 <script>
-let activeYear;
-function showTab(id,btn){document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active')}
-function load(){
-  google.script.run.withSuccessHandler(renderDash).withFailureHandler(showError).getDashboard();
-  google.script.run.withSuccessHandler(renderEvents).getEvents();
-}
-function renderDash(d){
-  activeYear=d.year; document.getElementById('year').textContent=d.year;
-  const cards=document.getElementById('cards'); cards.innerHTML='';
-  d.houses.forEach(h=>cards.innerHTML+=`<div class="card"><div class="rank">KEDUDUKAN #${h.rank}</div><div class="house">${h.name}</div><div class="points">${h.points} mata</div><div>🥇 ${h.gold} &nbsp; 🥈 ${h.silver} &nbsp; 🥉 ${h.bronze}</div></div>`);
-  google.script.run.withSuccessHandler(renderHouses).getHouses(d.year);
-}
-function renderHouses(hs){
-  ['house','bonusHouse'].forEach(id=>{const s=document.getElementById(id);s.innerHTML=hs.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')});
-}
-function renderEvents(es){document.getElementById('event').innerHTML=es.map(e=>`<option value="${e.id}">${e.id} — ${e.name}</option>`).join('')}
-function submitResult(){
-  const data={year:activeYear,eventId:event.value,position:position.value,houseId:house.value,name:name.value,participantId:pid.value,note:note.value};
-  google.script.run.withSuccessHandler(x=>{resultStatus.className='status';resultStatus.textContent='Keputusan disimpan: '+x.id;load()}).withFailureHandler(showError).saveResult(data);
-}
-function submitBonus(){
-  const data={year:activeYear,houseId:bonusHouse.value,type:bonusType.value,points:bonusPoints.value,reason:reason.value,approvedBy:approvedBy.value};
-  google.script.run.withSuccessHandler(x=>{bonusStatus.className='status';bonusStatus.textContent='Rekod disimpan: '+x.id;load()}).withFailureHandler(showError).saveBonus(data);
-}
-function showError(e){alert(e.message||e)}
-load();
+  let currentUser = null;
+  let currentYear = null;
+  let events = [];
+
+  function start() {
+    google.script.run
+      .withSuccessHandler(function(response) {
+        if (!response.ok) {
+          alert(response.message);
+          return;
+        }
+
+        currentUser = response.user;
+        setUserInterface();
+        loadDashboard();
+        loadEvents();
+      })
+      .withFailureHandler(function(error) {
+        alert("Ralat sambungan: " + error.message);
+      })
+      .me();
+  }
+
+  function setUserInterface() {
+    const name = currentUser.name || "Pengguna";
+    const role = currentUser.role || "Pengguna";
+
+    document.getElementById("profileName").textContent = name;
+    document.getElementById("profileRole").textContent = role;
+    document.getElementById("avatar").textContent = name.charAt(0).toUpperCase();
+
+    document.getElementById("welcomeText").textContent =
+      "Selamat datang, " + name + ". Berikut ialah ringkasan sistem sukan semasa.";
+
+    document.getElementById("houseBadge").textContent =
+      "Rumah: " + (currentUser.houseId || "Admin");
+  }
+
+  function loadDashboard() {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        currentYear = data.year;
+
+        document.getElementById("statYear").textContent = data.year;
+        document.getElementById("statHouses").textContent = data.houses.length;
+
+        renderHouseCards(data.houses);
+        renderHouseTable(data.houses);
+        renderSummary(data.houses);
+      })
+      .withFailureHandler(function(error) {
+        console.error(error);
+      })
+      .getDashboard();
+  }
+
+  function renderHouseCards(houses) {
+    const container = document.getElementById("houseCards");
+
+    if (!houses.length) {
+      container.innerHTML = '<div class="empty">Tiada rumah aktif.</div>';
+      return;
+    }
+
+    const colors = ["#c0392b", "#2471a3", "#229954", "#d4ac0d"];
+
+    container.innerHTML = houses.map(function(h, index) {
+      return `
+        <div class="house">
+          <div class="house-bar" style="background:${colors[index % colors.length]}"></div>
+          <div class="house-rank">#${h.rank}</div>
+          <div class="house-name">${escapeHtml(h.name)}</div>
+          <div class="house-points">
+            ${h.points}
+            <span style="font-size:11px;color:#6b7785">MATA</span>
+          </div>
+          <div class="medals">
+            🥇 ${h.gold}
+            &nbsp; 🥈 ${h.silver}
+            &nbsp; 🥉 ${h.bronze}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderHouseTable(houses) {
+    const body = document.getElementById("houseTable");
+
+    if (!houses.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">Tiada data.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = houses.map(function(h) {
+      return `
+        <tr>
+          <td><strong>#${h.rank}</strong></td>
+          <td><strong>${escapeHtml(h.name)}</strong></td>
+          <td><strong>${h.points}</strong></td>
+          <td>${h.gold}</td>
+          <td>${h.silver}</td>
+          <td>${h.bronze}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function renderSummary(houses) {
+    const total = houses.reduce(function(sum, h) {
+      return sum + Number(h.points || 0);
+    }, 0);
+
+    document.getElementById("summary").innerHTML = `
+      <div style="padding:12px 0;border-bottom:1px solid #e5eaf0">
+        <div style="font-size:11px;color:#6b7785">JUMLAH MATA</div>
+        <div style="font-size:28px;font-weight:900;margin-top:5px">${total}</div>
+      </div>
+
+      <div style="padding:12px 0">
+        <div style="font-size:11px;color:#6b7785">RUMAH TEMPAT PERTAMA</div>
+        <div style="font-size:18px;font-weight:900;margin-top:5px">
+          ${houses.length ? escapeHtml(houses[0].name) : "-"}
+        </div>
+        <div style="font-size:12px;color:#6b7785">
+          ${houses.length ? houses[0].points + " mata" : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  function loadEvents() {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        events = data || [];
+        document.getElementById("statEvents").textContent = events.length;
+        populateEventSelects();
+      })
+      .withFailureHandler(function(error) {
+        console.error(error);
+      })
+      .listEvents(currentYear);
+  }
+
+  function populateEventSelects() {
+    const options =
+      '<option value="">Pilih acara...</option>' +
+      events.map(function(e) {
+        return `<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`;
+      }).join("");
+
+    document.getElementById("eventSelect").innerHTML = options;
+    document.getElementById("laneEvent").innerHTML = options;
+  }
+
+  function loadStudents() {
+    const eventId = document.getElementById("eventSelect").value;
+    const query = document.getElementById("studentSearch").value;
+    const list = document.getElementById("studentList");
+
+    if (!eventId) {
+      list.innerHTML = '<div class="empty">Pilih acara terlebih dahulu.</div>';
+      return;
+    }
+
+    if (!currentUser || !currentUser.houseId) {
+      list.innerHTML =
+        '<div class="empty">Akaun ini belum mempunyai rumah sukan.</div>';
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data.length) {
+          list.innerHTML = '<div class="empty">Tiada murid yang sepadan.</div>';
+          return;
+        }
+
+        list.innerHTML = data.map(function(s) {
+          return `
+            <label class="student">
+              <input type="checkbox"
+                     value="${escapeAttr(s.id)}"
+                     ${s.registered ? "disabled" : ""}>
+
+              <div style="flex:1">
+                <div class="student-name">${escapeHtml(s.name)}</div>
+                <div class="student-meta">
+                  Darjah ${escapeHtml(s.grade)}
+                  • ${escapeHtml(s.className)}
+                  • ${escapeHtml(s.gender)}
+                </div>
+              </div>
+
+              ${s.registered
+                ? '<span class="badge">✓ Sudah daftar</span>'
+                : ""}
+            </label>
+          `;
+        }).join("");
+      })
+      .withFailureHandler(function(error) {
+        list.innerHTML =
+          '<div class="empty">' + escapeHtml(error.message) + '</div>';
+      })
+      .listEligibleStudents(
+        currentYear,
+        eventId,
+        currentUser.houseId,
+        query
+      );
+  }
+
+  function registerParticipants() {
+    const eventId = document.getElementById("eventSelect").value;
+
+    const ids = Array.from(
+      document.querySelectorAll("#studentList input[type=checkbox]:checked")
+    ).map(function(input) {
+      return input.value;
+    });
+
+    if (!eventId) {
+      showMessage("registrationMessage", "Sila pilih acara.", false);
+      return;
+    }
+
+    if (!ids.length) {
+      showMessage(
+        "registrationMessage",
+        "Sila pilih sekurang-kurangnya seorang peserta.",
+        false
+      );
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function() {
+        showMessage(
+          "registrationMessage",
+          "✓ Peserta berjaya didaftarkan.",
+          true
+        );
+        loadStudents();
+      })
+      .withFailureHandler(function(error) {
+        showMessage("registrationMessage", error.message, false);
+      })
+      .registerParticipants({
+        year: currentYear,
+        eventId: eventId,
+        houseId: currentUser.houseId,
+        muridIds: ids
+      });
+  }
+
+  function generateLanes() {
+    const eventId = document.getElementById("laneEvent").value;
+    const result = document.getElementById("laneResult");
+
+    if (!eventId) {
+      alert("Sila pilih acara.");
+      return;
+    }
+
+    result.innerHTML =
+      '<div class="empty">🎲 Sedang menjana undian...</div>';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data.length) {
+          result.innerHTML =
+            '<div class="empty">Tiada peserta untuk acara ini.</div>';
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(function(houses) {
+            const houseMap = {};
+            houses.forEach(function(h) {
+              houseMap[h.id] = h.name;
+            });
+
+            result.innerHTML = `
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lorong</th>
+                      <th>Rumah</th>
+                      <th>ID Murid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.map(function(x) {
+                      return `
+                        <tr>
+                          <td><strong style="font-size:16px">${x.lane}</strong></td>
+                          <td><strong>${escapeHtml(houseMap[x.houseId] || x.houseId)}</strong></td>
+                          <td>${escapeHtml(x.muridId)}</td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            `;
+          })
+          .listHouses(currentYear);
+      })
+      .withFailureHandler(function(error) {
+        result.innerHTML =
+          '<div class="message err">' + escapeHtml(error.message) + '</div>';
+      })
+      .generateLanes(currentYear, eventId);
+  }
+
+  function loadIndividualRanking() {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        const body = document.getElementById("individualTable");
+
+        if (!data.length) {
+          body.innerHTML =
+            '<tr><td colspan="8" class="empty">Belum ada keputusan.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = data.map(function(x, index) {
+          return `
+            <tr>
+              <td><strong>#${index + 1}</strong></td>
+              <td>
+                <strong>${escapeHtml(x.name)}</strong>
+                <div style="font-size:10px;color:#6b7785">
+                  ${escapeHtml(x.className || "")}
+                </div>
+              </td>
+              <td>${escapeHtml(x.grade)}</td>
+              <td>${escapeHtml(x.house)}</td>
+              <td><strong>${x.points}</strong></td>
+              <td>${x.gold}</td>
+              <td>${x.silver}</td>
+              <td>${x.bronze}</td>
+            </tr>
+          `;
+        }).join("");
+      })
+      .withFailureHandler(function(error) {
+        console.error(error);
+      })
+      .getIndividualRanking(currentYear);
+  }
+
+  function showSection(id, button) {
+    document.querySelectorAll(".section").forEach(function(section) {
+      section.classList.remove("active");
+    });
+
+    const target = document.getElementById(id);
+    if (target) target.classList.add("active");
+
+    document.querySelectorAll(".nav button").forEach(function(btn) {
+      btn.classList.remove("active");
+    });
+
+    if (button) button.classList.add("active");
+
+    const titles = {
+      dashboard: ["Dashboard", "Ringkasan keseluruhan kejohanan"],
+      registration: ["Daftar Peserta", "Pendaftaran peserta mengikut rumah sukan"],
+      lanes: ["Undian Lorong", "Penjanaan lorong secara automatik"],
+      results: ["Keputusan", "Rekod keputusan dan mata peserta"],
+      individual: ["Peserta Terbaik", "Ranking peserta berdasarkan mata individu"],
+      "house-ranking": ["Ranking Rumah", "Kedudukan empat rumah sukan"],
+      admin: ["Pentadbiran", "Pengurusan sistem dan data"]
+    };
+
+    if (titles[id]) {
+      document.getElementById("pageTitle").textContent = titles[id][0];
+      document.getElementById("pageSub").textContent = titles[id][1];
+    }
+
+    if (id === "individual") loadIndividualRanking();
+
+    if (window.innerWidth <= 760) {
+      document.getElementById("sidebar").classList.remove("open");
+    }
+  }
+
+  function toggleSidebar() {
+    document.getElementById("sidebar").classList.toggle("open");
+  }
+
+  function showMessage(id, text, success) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = success ? "message ok" : "message err";
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
+
+  start();
 </script>
 </body>
 </html>
