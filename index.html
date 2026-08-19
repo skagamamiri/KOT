@@ -885,77 +885,81 @@
 </div>
 
 <script>
-/* GITHUB PAGES ↔ GOOGLE APPS SCRIPT BRIDGE — FASA 2B */
+
+  /* =========================
+     GITHUB <-> APPS SCRIPT API BRIDGE
+     FASA 2C: satu API + cache di backend
+     ========================= */
   const API_URL = "https://script.google.com/macros/s/AKfycbyOPXhpCG9HxxZ9mL51R139Ke3pWsZiTFJPI6_-GGY6VBQvsOFe7XJixv8_97Fw5fYn/exec";
-  let API_EMAIL = localStorage.getItem("kot_api_email") || "";
-  let KOT_GITHUB_MODE = false;
+  let API_EMAIL = "";
+  let apiSeq = 0;
 
-  if (typeof window.google === "undefined" || !window.google.script) {
-    KOT_GITHUB_MODE = true;
-    window.google = window.google || {};
-    window.google.script = window.google.script || {};
-
-    function apiRun() {
-      let success = function(){};
-      let failure = function(){};
-      const runner = new Proxy({}, {
-        get: function(target, prop) {
-          if (prop === "withSuccessHandler") return function(fn){ success = typeof fn === "function" ? fn : function(){}; return runner; };
-          if (prop === "withFailureHandler") return function(fn){ failure = typeof fn === "function" ? fn : function(){}; return runner; };
-          if (prop === "withUserObject") return function(){ return runner; };
-          return function() {
-            const args = Array.prototype.slice.call(arguments);
-            if (!API_URL || API_URL.indexOf("PASTE_APPS_SCRIPT") === 0) {
-              failure({message:"API_URL belum ditetapkan dalam Index.html."}); return;
-            }
-            const callbackName = "__kot_cb_" + Date.now() + "_" + Math.floor(Math.random()*100000);
-            const script = document.createElement("script");
-            let timer = setTimeout(function(){ cleanup(); failure({message:"Sambungan API tamat masa (20 saat)."}); }, 20000);
-            function cleanup(){ clearTimeout(timer); try{delete window[callbackName];}catch(e){window[callbackName]=undefined;} if(script.parentNode)script.parentNode.removeChild(script); }
-            window[callbackName] = function(response){ cleanup(); if(response && response.ok) success(response.data); else failure({message:(response&&response.message)||"Ralat API."}); };
-            const raw = unescape(encodeURIComponent(JSON.stringify(args)));
-            const encodedArgs = btoa(raw).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
-            const params = new URLSearchParams({api:"1",action:String(prop),args:encodedArgs,callback:callbackName,email:API_EMAIL||""});
-            script.src = API_URL + (API_URL.indexOf("?")>=0 ? "&" : "?") + params.toString();
-            script.onerror = function(){cleanup();failure({message:"Tidak dapat mencapai Google Apps Script API."});};
-            document.head.appendChild(script);
-          };
-        }
-      });
-      return runner;
-    }
-    window.google.script.run = apiRun();
+  function encodeApiArgs(args) {
+    const text = JSON.stringify(args || []);
+    return btoa(unescape(encodeURIComponent(text)))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
+
+  function apiRequest(action, args, success, failure) {
+    if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+      (failure || function(){})(new Error('API_URL belum ditetapkan dalam Index.html.'));
+      return;
+    }
+    const callback = '__sskam_cb_' + (++apiSeq) + '_' + Date.now();
+    const script = document.createElement('script');
+    let timer = setTimeout(function(){ cleanup(); (failure || function(){})(new Error('Sambungan API tamat masa.')); }, 20000);
+    function cleanup(){ clearTimeout(timer); delete window[callback]; if(script.parentNode) script.parentNode.removeChild(script); }
+    window[callback] = function(payload){ cleanup(); if(payload && payload.ok) (success || function(){})(payload.data); else (failure || function(){})(new Error(payload && payload.message ? payload.message : 'Ralat API.')); };
+    const params = new URLSearchParams({api:'1',action:action,email:API_EMAIL,args:encodeApiArgs(args || []),callback:callback});
+    script.src = API_URL + (API_URL.indexOf('?')>=0?'&':'?') + params.toString();
+    script.onerror = function(){ cleanup(); (failure || function(){})(new Error('Tidak dapat menghubungi Google Apps Script.')); };
+    document.head.appendChild(script);
+  }
+
+  function makeRun(success, failure) {
+    const chain = {
+      withSuccessHandler: function(fn){ return makeRun(fn, failure); },
+      withFailureHandler: function(fn){ return makeRun(success, fn); }
+    };
+    return new Proxy(chain, { get: function(target, prop) {
+      if (prop in target) return target[prop];
+      return function(){
+        const args = Array.prototype.slice.call(arguments);
+        apiRequest(prop, args, success, failure);
+      };
+    }});
+  }
+  window.google = window.google || {};
+  window.google.script = window.google.script || {};
+  window.google.script.run = makeRun(null, null);
 
   let currentUser = null;
   let currentYear = null;
   let events = [];
 
   function start() {
-    if (KOT_GITHUB_MODE) {
-      if (!API_EMAIL) {
-        API_EMAIL = (prompt("Email Google yang didaftarkan dalam USERS:", "") || "").trim().toLowerCase();
-        if (!API_EMAIL) return;
-        localStorage.setItem("kot_api_email", API_EMAIL);
-      }
+    if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+      alert('Sila tetapkan API_URL dalam Index.html kepada URL Web App Apps Script.');
+      return;
     }
+    const savedEmail = localStorage.getItem('sskam_email');
+    const email = savedEmail || prompt('Email Google yang didaftarkan dalam USERS:');
+    if (!email) return;
+    API_EMAIL = email.trim().toLowerCase();
+    localStorage.setItem('sskam_email', API_EMAIL);
 
     google.script.run
       .withSuccessHandler(function(response) {
-        if (!response || !response.ok) {
-          alert(response ? response.message : "Gagal sambung ke sistem.");
-          return;
-        }
-
+        if (!response || !response.ok) { alert(response && response.message ? response.message : 'Gagal login.'); return; }
         currentUser = response.user;
+        currentYear = response.dashboard.year;
+        events = response.events || [];
         setUserInterface();
-        loadDashboard();
-        loadEvents();
+        renderDashboardData(response.dashboard);
+        populateEventSelects();
       })
-      .withFailureHandler(function(error) {
-        alert("Ralat sambungan: " + (error.message || error));
-      })
-      .me(API_EMAIL || undefined);
+      .withFailureHandler(function(error) { alert('Ralat sambungan: ' + error.message); })
+      .getBootstrap();
   }
 
   function setUserInterface() {
@@ -977,21 +981,20 @@
     if (adminNav) adminNav.style.display = isAdmin() ? "flex" : "none";
   }
 
+  function renderDashboardData(data) {
+    currentYear = data.year;
+    document.getElementById("statYear").textContent = data.year;
+    document.getElementById("statHouses").textContent = data.houses.length;
+    document.getElementById("statEvents").textContent = data.eventCount || 0;
+    renderHouseCards(data.houses);
+    renderHouseTable(data.houses);
+    renderSummary(data.houses);
+  }
+
   function loadDashboard() {
     google.script.run
-      .withSuccessHandler(function(data) {
-        currentYear = data.year;
-
-        document.getElementById("statYear").textContent = data.year;
-        document.getElementById("statHouses").textContent = data.houses.length;
-
-        renderHouseCards(data.houses);
-        renderHouseTable(data.houses);
-        renderSummary(data.houses);
-      })
-      .withFailureHandler(function(error) {
-        console.error(error);
-      })
+      .withSuccessHandler(renderDashboardData)
+      .withFailureHandler(function(error) { console.error(error); })
       .getDashboard();
   }
 
@@ -1070,16 +1073,11 @@
     `;
   }
 
-  function loadEvents() {
+  function loadEvents(force) {
+    if (!force && events && events.length) { populateEventSelects(); return; }
     google.script.run
-      .withSuccessHandler(function(data) {
-        events = data || [];
-        document.getElementById("statEvents").textContent = events.length;
-        populateEventSelects();
-      })
-      .withFailureHandler(function(error) {
-        console.error(error);
-      })
+      .withSuccessHandler(function(data) { events = data || []; document.getElementById("statEvents").textContent = events.length; populateEventSelects(); })
+      .withFailureHandler(function(error) { console.error(error); })
       .listEvents(currentYear);
   }
 
@@ -1333,13 +1331,31 @@
 
   function loadAdminAll() {
     if (!ensureAdmin()) return;
-    loadAdminYears();
-    loadAdminHouses();
-    loadAdminStudents();
-    loadAdminEvents();
-    loadAdminUsers();
-    loadAdminPoints();
+    google.script.run
+      .withSuccessHandler(function(data){
+        adminYears=data.years||[]; adminHouses=data.houses||[]; adminEvents=data.events||[]; adminUsers=data.users||[]; adminPoints=data.points||[];
+        currentYear=data.year;
+        renderAdminYears(); renderAdminHouses(); renderAdminEvents(); renderAdminUsers(); renderAdminPoints();
+        document.getElementById('adminActiveYear').textContent='Tahun: '+currentYear;
+        loadAdminStudents();
+      })
+      .withFailureHandler(adminError)
+      .getAdminBootstrap();
   }
+
+  function renderAdminYears() {
+    document.getElementById('adminYearsTable').innerHTML = adminYears.length ? adminYears.map(function(x){ return '<tr><td><strong>'+x.year+'</strong></td><td>'+escapeHtml(x.name)+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openYearModal('+x.year+')">Edit</button>'+(x.active?'':'<button class="btn btn-light" onclick="activateAdminYear('+x.year+')">Aktifkan</button><button class="btn danger" onclick="deleteAdminYear('+x.year+')">Buang</button>')+'</div></td></tr>'; }).join('') : '<tr><td colspan="4" class="empty">Belum ada tahun.</td></tr>';
+  }
+  function renderAdminHouses() {
+    document.getElementById('adminHousesTable').innerHTML = adminHouses.length ? adminHouses.map(function(x){ return '<tr><td><strong>'+escapeHtml(x.id)+'</strong></td><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+currentYear+'</td><td><span class="badge success">AKTIF</span></td><td><button class="btn btn-light" onclick="openHouseModal(\''+escapeAttr(x.id)+'\')">Edit</button></td></tr>'; }).join('') : '<tr><td colspan="5" class="empty">Tiada rumah aktif.</td></tr>';
+  }
+  function renderAdminEvents() {
+    document.getElementById('adminEventsTable').innerHTML = adminEvents.length ? adminEvents.map(function(x){ return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.category)+'</td><td>'+escapeHtml(x.gender)+'</td><td>'+escapeHtml(x.ageGroup)+'</td><td>'+(x.laneEvent?'Ya':'Tidak')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openEventModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminEvent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>'; }).join('') : '<tr><td colspan="6" class="empty">Tiada acara aktif.</td></tr>';
+  }
+  function renderAdminUsers() {
+    document.getElementById('adminUsersTable').innerHTML = adminUsers.length ? adminUsers.map(function(x){ var hn=adminHouses.find(function(h){return String(h.id)===String(x.houseId);}); return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.email)+'</td><td>'+escapeHtml(x.role)+'</td><td>'+escapeHtml(hn?hn.name:(x.houseId||'-'))+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><button class="btn btn-light" onclick="openUserModal(\''+escapeAttr(x.email)+'\')">Edit</button></td></tr>'; }).join('') : '<tr><td colspan="6" class="empty">Tiada pengguna.</td></tr>';
+  }
+  function renderAdminPoints() { var map={}; adminPoints.forEach(function(x){map[x.position]=x;}); document.getElementById('adminPointsTable').innerHTML=Array.from({length:8},function(_,i){var p=i+1,x=map[p]||{points:0,medal:''};return '<tr><td><strong>'+p+'</strong></td><td><input type="number" min="0" id="point-'+p+'" value="'+Number(x.points||0)+'" style="max-width:120px"></td><td><select id="medal-'+p+'" style="max-width:180px"><option value="">-</option><option '+(x.medal==='EMAS'?'selected':'')+'>EMAS</option><option '+(x.medal==='PERAK'?'selected':'')+'>PERAK</option><option '+(x.medal==='GANGSA'?'selected':'')+'>GANGSA</option></select></td></tr>';}).join(''); }
 
   function loadAdminYears() {
     google.script.run.withSuccessHandler(function(data){
