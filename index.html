@@ -901,20 +901,198 @@
   }
 
   function apiRequest(action, args, success, failure) {
-    if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
-      (failure || function(){})(new Error('API_URL belum ditetapkan dalam Index.html.'));
+
+  if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+    (failure || function(){})(
+      new Error('API_URL belum ditetapkan dalam Index.html.')
+    );
+    return;
+  }
+
+  const callback =
+    '__sskam_cb_' +
+    (++apiSeq) +
+    '_' +
+    Date.now();
+
+  const script =
+    document.createElement('script');
+
+  let finished = false;
+
+  /*
+   * Kita naikkan timeout daripada 20 saat
+   * kepada 60 saat kerana sesetengah operasi
+   * Google Sheet mengambil masa lebih lama.
+   */
+  const timer = setTimeout(function() {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
+
+    (failure || function() {})(
+      new Error(
+        'Sambungan API mengambil masa terlalu lama. ' +
+        'Sila cuba Segar semula.'
+      )
+    );
+
+  }, 60000);
+
+
+  function cleanup() {
+
+    clearTimeout(timer);
+
+    try {
+      delete window[callback];
+    } catch(e) {}
+
+    if (script.parentNode) {
+      script.parentNode.removeChild(script);
+    }
+
+  }
+
+
+  /*
+   * Callback JSONP
+   */
+  window[callback] = function(payload) {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
+
+
+    if (!payload) {
+
+      (failure || function(){})(
+        new Error('API tidak mengembalikan data.')
+      );
+
       return;
     }
-    const callback = '__sskam_cb_' + (++apiSeq) + '_' + Date.now();
-    const script = document.createElement('script');
-    let timer = setTimeout(function(){ cleanup(); (failure || function(){})(new Error('Sambungan API tamat masa.')); }, 20000);
-    function cleanup(){ clearTimeout(timer); delete window[callback]; if(script.parentNode) script.parentNode.removeChild(script); }
-    window[callback] = function(payload){ cleanup(); if(payload && payload.ok) (success || function(){})(payload.data); else (failure || function(){})(new Error(payload && payload.message ? payload.message : 'Ralat API.')); };
-    const params = new URLSearchParams({api:'1',action:action,email:API_EMAIL,args:encodeApiArgs(args || []),callback:callback});
-    script.src = API_URL + (API_URL.indexOf('?')>=0?'&':'?') + params.toString();
-    script.onerror = function(){ cleanup(); (failure || function(){})(new Error('Tidak dapat menghubungi Google Apps Script.')); };
-    document.head.appendChild(script);
-  }
+
+
+    if (payload.ok === true) {
+
+      (success || function(){})(
+        payload.data
+      );
+
+      return;
+
+    }
+
+
+    /*
+     * API mengembalikan ralat
+     */
+    (failure || function(){})(
+      new Error(
+        payload.message ||
+        'Ralat API.'
+      )
+    );
+
+  };
+
+
+  /*
+   * Bina parameter API
+   */
+  const params =
+    new URLSearchParams();
+
+
+  params.set(
+    'api',
+    '1'
+  );
+
+  params.set(
+    'action',
+    String(action || '')
+  );
+
+  params.set(
+    'email',
+    String(API_EMAIL || '')
+  );
+
+  params.set(
+    'args',
+    encodeApiArgs(
+      args || []
+    )
+  );
+
+  params.set(
+    'callback',
+    callback
+  );
+
+
+  const separator =
+    API_URL.indexOf('?') >= 0
+      ? '&'
+      : '?';
+
+
+  script.src =
+    API_URL +
+    separator +
+    params.toString();
+
+
+  /*
+   * Jika browser gagal memuatkan
+   * script JSONP.
+   */
+  script.onerror = function() {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
+
+    (failure || function(){})(
+      new Error(
+        'Tidak dapat menghubungi Google Apps Script.'
+      )
+    );
+
+  };
+
+
+  /*
+   * Debug untuk sementara.
+   * Boleh dilihat melalui F12 → Console.
+   */
+  console.log(
+    '[API REQUEST]',
+    action,
+    args
+  );
+
+  console.log(
+    '[API URL]',
+    script.src
+  );
+
+
+  document.head.appendChild(
+    script
+  );
+
+}
 
   function makeRun(success, failure) {
     const chain = {
