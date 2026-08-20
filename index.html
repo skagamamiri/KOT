@@ -563,7 +563,13 @@
                 Guru rumah memilih murid yang telah dimasukkan oleh Admin.
               </div>
             </div>
-            <span class="badge" id="houseBadge">Rumah: -</span>
+            <div style="min-width:220px">
+  <select id="registrationHouse"
+          onchange="loadStudents()"
+          style="margin:0">
+    <option value="">Memuatkan rumah...</option>
+  </select>
+</div>
           </div>
 
           <div class="form-grid">
@@ -1130,11 +1136,13 @@
       .withSuccessHandler(function(response) {
         if (!response || !response.ok) { alert(response && response.message ? response.message : 'Gagal login.'); return; }
         currentUser = response.user;
-        currentYear = response.dashboard.year;
-        events = response.events || [];
-        setUserInterface();
-        renderDashboardData(response.dashboard);
-        populateEventSelects();
+currentYear = response.dashboard.year;
+events = response.events || [];
+
+setUserInterface();
+renderDashboardData(response.dashboard);
+populateEventSelects();
+loadRegistrationHouses();
       })
       .withFailureHandler(function(error) { alert('Ralat sambungan: ' + error.message); })
       .getBootstrap();
@@ -1151,8 +1159,7 @@
     document.getElementById("welcomeText").textContent =
       "Selamat datang, " + name + ". Berikut ialah ringkasan sistem sukan semasa.";
 
-    document.getElementById("houseBadge").textContent =
-      "Rumah: " + (currentUser.houseId || "Admin");
+    
 
     const adminNav = Array.from(document.querySelectorAll(".nav button"))
       .find(function(btn){ return btn.textContent.indexOf("Admin") !== -1; });
@@ -1258,7 +1265,97 @@
       .withFailureHandler(function(error) { console.error(error); })
       .listEvents(currentYear);
   }
+function loadRegistrationHouses() {
 
+  google.script.run
+    .withSuccessHandler(function(houses) {
+
+      const select =
+        document.getElementById("registrationHouse");
+
+      if (!select) return;
+
+      houses = houses || [];
+
+      /*
+       * ADMIN
+       * Boleh memilih mana-mana rumah.
+       */
+      if (
+        currentUser &&
+        String(currentUser.role).toUpperCase() === "ADMIN"
+      ) {
+
+        select.innerHTML =
+          '<option value="">Pilih rumah sukan...</option>' +
+          houses.map(function(h) {
+
+            return `
+              <option value="${escapeAttr(h.id)}">
+                ${escapeHtml(h.name)}
+              </option>
+            `;
+
+          }).join("");
+
+        select.disabled = false;
+
+        return;
+      }
+
+
+      /*
+       * GURU RUMAH
+       * Rumah ditetapkan secara automatik.
+       */
+      if (
+        currentUser &&
+        currentUser.houseId
+      ) {
+
+        const house =
+          houses.find(function(h) {
+
+            return String(h.id) ===
+                   String(currentUser.houseId);
+
+          });
+
+
+        if (house) {
+
+          select.innerHTML =
+            `<option value="${escapeAttr(house.id)}">
+              ${escapeHtml(house.name)}
+            </option>`;
+
+          select.value =
+            house.id;
+
+          select.disabled = true;
+
+        }
+
+      }
+
+    })
+    .withFailureHandler(function(error) {
+
+      const select =
+        document.getElementById("registrationHouse");
+
+      if (select) {
+
+        select.innerHTML =
+          '<option value="">Gagal memuatkan rumah</option>';
+
+      }
+
+      console.error(error);
+
+    })
+    .listHouses(currentYear);
+}
   function populateEventSelects() {
     const options =
       '<option value="">Pilih acara...</option>' +
@@ -1270,107 +1367,227 @@
     document.getElementById("laneEvent").innerHTML = options;
   }
 
-  function loadStudents() {
-    const eventId = document.getElementById("eventSelect").value;
-    const query = document.getElementById("studentSearch").value;
-    const list = document.getElementById("studentList");
+function loadStudents() {
 
-    if (!eventId) {
-      list.innerHTML = '<div class="empty">Pilih acara terlebih dahulu.</div>';
-      return;
-    }
+  const eventId =
+    document.getElementById("eventSelect").value;
 
-    if (!currentUser || !currentUser.houseId) {
+  const query =
+    document.getElementById("studentSearch").value;
+
+  const list =
+    document.getElementById("studentList");
+
+  const houseSelect =
+    document.getElementById("registrationHouse");
+
+  const houseId =
+    houseSelect ? houseSelect.value : "";
+
+
+  if (!eventId) {
+
+    list.innerHTML =
+      '<div class="empty">' +
+      'Pilih acara terlebih dahulu.' +
+      '</div>';
+
+    return;
+
+  }
+
+
+  if (!houseId) {
+
+    list.innerHTML =
+      '<div class="empty">' +
+      'Sila pilih rumah sukan terlebih dahulu.' +
+      '</div>';
+
+    return;
+
+  }
+
+
+  list.innerHTML =
+    '<div class="empty">Memuatkan murid...</div>';
+
+
+  google.script.run
+
+    .withSuccessHandler(function(data) {
+
+      if (!data || !data.length) {
+
+        list.innerHTML =
+          '<div class="empty">' +
+          'Tiada murid yang sepadan untuk rumah ini.' +
+          '</div>';
+
+        return;
+
+      }
+
+
       list.innerHTML =
-        '<div class="empty">Akaun ini belum mempunyai rumah sukan.</div>';
-      return;
-    }
+        data.map(function(s) {
 
-    google.script.run
-      .withSuccessHandler(function(data) {
-        if (!data.length) {
-          list.innerHTML = '<div class="empty">Tiada murid yang sepadan.</div>';
-          return;
-        }
-
-        list.innerHTML = data.map(function(s) {
           return `
             <label class="student">
-              <input type="checkbox"
-                     value="${escapeAttr(s.id)}"
-                     ${s.registered ? "disabled" : ""}>
+
+              <input
+                type="checkbox"
+                value="${escapeAttr(s.id)}"
+                ${s.registered ? "disabled" : ""}
+              >
 
               <div style="flex:1">
-                <div class="student-name">${escapeHtml(s.name)}</div>
+
+                <div class="student-name">
+                  ${escapeHtml(s.name)}
+                </div>
+
                 <div class="student-meta">
                   Darjah ${escapeHtml(s.grade)}
                   • ${escapeHtml(s.className)}
                   • ${escapeHtml(s.gender)}
                 </div>
+
               </div>
 
-              ${s.registered
-                ? '<span class="badge">✓ Sudah daftar</span>'
-                : ""}
+              ${
+                s.registered
+                  ? '<span class="badge">✓ Sudah daftar</span>'
+                  : ''
+              }
+
             </label>
           `;
+
         }).join("");
-      })
-      .withFailureHandler(function(error) {
-        list.innerHTML =
-          '<div class="empty">' + escapeHtml(error.message) + '</div>';
-      })
-      .listEligibleStudents(
-        currentYear,
-        eventId,
-        currentUser.houseId,
-        query
-      );
-  }
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      list.innerHTML =
+        '<div class="empty">' +
+        escapeHtml(error.message) +
+        '</div>';
+
+    })
+
+    .listEligibleStudents(
+      currentYear,
+      eventId,
+      houseId,
+      query
+    );
+}
 
   function registerParticipants() {
-    const eventId = document.getElementById("eventSelect").value;
 
-    const ids = Array.from(
-      document.querySelectorAll("#studentList input[type=checkbox]:checked")
+  const eventId =
+    document.getElementById("eventSelect").value;
+
+  const houseId =
+    document.getElementById("registrationHouse").value;
+
+
+  const ids =
+    Array.from(
+      document.querySelectorAll(
+        "#studentList input[type=checkbox]:checked"
+      )
     ).map(function(input) {
+
       return input.value;
+
     });
 
-    if (!eventId) {
-      showMessage("registrationMessage", "Sila pilih acara.", false);
-      return;
-    }
 
-    if (!ids.length) {
-      showMessage(
-        "registrationMessage",
-        "Sila pilih sekurang-kurangnya seorang peserta.",
-        false
-      );
-      return;
-    }
+  if (!eventId) {
 
-    google.script.run
-      .withSuccessHandler(function() {
-        showMessage(
-          "registrationMessage",
-          "✓ Peserta berjaya didaftarkan.",
-          true
-        );
-        loadStudents();
-      })
-      .withFailureHandler(function(error) {
-        showMessage("registrationMessage", error.message, false);
-      })
-      .registerParticipants({
-        year: currentYear,
-        eventId: eventId,
-        houseId: currentUser.houseId,
-        muridIds: ids
-      });
+    showMessage(
+      "registrationMessage",
+      "Sila pilih acara.",
+      false
+    );
+
+    return;
+
   }
 
+
+  if (!houseId) {
+
+    showMessage(
+      "registrationMessage",
+      "Sila pilih rumah sukan.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (!ids.length) {
+
+    showMessage(
+      "registrationMessage",
+      "Sila pilih sekurang-kurangnya seorang peserta.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  google.script.run
+
+    .withSuccessHandler(function(response) {
+
+      showMessage(
+        "registrationMessage",
+        "✓ " +
+        (response.count || ids.length) +
+        " peserta berjaya didaftarkan.",
+        true
+      );
+
+      loadStudents();
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      showMessage(
+        "registrationMessage",
+        error.message,
+        false
+      );
+
+    })
+
+    .registerParticipants({
+
+      year:
+        currentYear,
+
+      eventId:
+        eventId,
+
+      houseId:
+        houseId,
+
+      muridIds:
+        ids
+
+    });
+
+}
   function generateLanes() {
     const eventId = document.getElementById("laneEvent").value;
     const result = document.getElementById("laneResult");
