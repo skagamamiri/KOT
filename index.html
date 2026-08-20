@@ -275,6 +275,66 @@
     .modal-body{padding:20px}
     .modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
     .close-btn{border:0;background:#f2f4f7;width:34px;height:34px;border-radius:9px;cursor:pointer}
+
+    /* =========================
+       SARINGAN TREK — FASA 3B
+       ========================= */
+    .screening-stats{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
+      margin:14px 0;
+    }
+    .screening-stat{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px;
+      background:#fbfcfe;
+    }
+    .screening-stat span{
+      display:block;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:800;
+      text-transform:uppercase;
+    }
+    .screening-stat strong{
+      display:block;
+      font-size:24px;
+      margin-top:5px;
+    }
+    .screening-heat{
+      margin-top:16px;
+    }
+    .heat-title{
+      font-size:16px;
+      font-weight:900;
+    }
+    .heat-sub{
+      color:var(--muted);
+      font-size:11px;
+      margin-top:3px;
+    }
+    .screening-time{
+      width:100px !important;
+      min-width:90px;
+      padding:8px 9px !important;
+      border:1px solid var(--border);
+      border-radius:8px;
+      outline:none;
+    }
+    .screening-time:focus{
+      border-color:var(--navy2);
+      box-shadow:0 0 0 3px rgba(23,63,99,.08);
+    }
+    .finalist{
+      background:#f6fbf8;
+    }
+    @media(max-width:700px){
+      .screening-stats{grid-template-columns:1fr 1fr;}
+      .screening-stats .screening-stat:last-child{grid-column:span 2;}
+    }
+
     @media(max-width:900px){.mini-grid{grid-template-columns:repeat(2,1fr)}.inline-form{grid-template-columns:1fr 1fr}.inline-form .wide{grid-column:span 2}}
     @media(max-width:700px){.mini-grid{grid-template-columns:1fr 1fr}.inline-form{grid-template-columns:1fr}.inline-form .wide{grid-column:span 1}}
 
@@ -420,6 +480,10 @@
         <span class="nav-icon">👥</span> Daftar Peserta
       </button>
 
+      <button onclick="showSection('screening', this)">
+        <span class="nav-icon">🏃</span> Saringan Trek
+      </button>
+
       <button onclick="showSection('lanes', this)">
         <span class="nav-icon">🎲</span> Undian Lorong
       </button>
@@ -563,13 +627,7 @@
                 Guru rumah memilih murid yang telah dimasukkan oleh Admin.
               </div>
             </div>
-            <div style="min-width:220px">
-  <select id="registrationHouse"
-          onchange="loadStudents()"
-          style="margin:0">
-    <option value="">Memuatkan rumah...</option>
-  </select>
-</div>
+            <span class="badge" id="houseBadge">Rumah: -</span>
           </div>
 
           <div class="form-grid">
@@ -610,6 +668,34 @@
 
           <div id="registrationMessage" class="message"></div>
         </div>
+      </section>
+
+      <section class="section" id="screening">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏃 Saringan Trek</div>
+              <div class="card-sub">
+                Acara trek yang mempunyai lebih daripada 8 peserta akan melalui saringan terlebih dahulu.
+              </div>
+            </div>
+            <span class="badge" id="screeningStatus">Belum pilih acara</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA TREK</label>
+              <select id="screeningEvent" onchange="loadScreeningEvent()">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="screeningInfo" style="margin-top:14px"></div>
+          <div id="screeningActions" class="actions"></div>
+        </div>
+
+        <div id="screeningHeats"></div>
       </section>
 
       <section class="section" id="lanes">
@@ -907,198 +993,20 @@
   }
 
   function apiRequest(action, args, success, failure) {
-
-  if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
-    (failure || function(){})(
-      new Error('API_URL belum ditetapkan dalam Index.html.')
-    );
-    return;
-  }
-
-  const callback =
-    '__sskam_cb_' +
-    (++apiSeq) +
-    '_' +
-    Date.now();
-
-  const script =
-    document.createElement('script');
-
-  let finished = false;
-
-  /*
-   * Kita naikkan timeout daripada 20 saat
-   * kepada 60 saat kerana sesetengah operasi
-   * Google Sheet mengambil masa lebih lama.
-   */
-  const timer = setTimeout(function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    (failure || function() {})(
-      new Error(
-        'Sambungan API mengambil masa terlalu lama. ' +
-        'Sila cuba Segar semula.'
-      )
-    );
-
-  }, 60000);
-
-
-  function cleanup() {
-
-    clearTimeout(timer);
-
-    try {
-      delete window[callback];
-    } catch(e) {}
-
-    if (script.parentNode) {
-      script.parentNode.removeChild(script);
-    }
-
-  }
-
-
-  /*
-   * Callback JSONP
-   */
-  window[callback] = function(payload) {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-
-    if (!payload) {
-
-      (failure || function(){})(
-        new Error('API tidak mengembalikan data.')
-      );
-
+    if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+      (failure || function(){})(new Error('API_URL belum ditetapkan dalam Index.html.'));
       return;
     }
-
-
-    if (payload.ok === true) {
-
-      (success || function(){})(
-        payload.data
-      );
-
-      return;
-
-    }
-
-
-    /*
-     * API mengembalikan ralat
-     */
-    (failure || function(){})(
-      new Error(
-        payload.message ||
-        'Ralat API.'
-      )
-    );
-
-  };
-
-
-  /*
-   * Bina parameter API
-   */
-  const params =
-    new URLSearchParams();
-
-
-  params.set(
-    'api',
-    '1'
-  );
-
-  params.set(
-    'action',
-    String(action || '')
-  );
-
-  params.set(
-    'email',
-    String(API_EMAIL || '')
-  );
-
-  params.set(
-    'args',
-    encodeApiArgs(
-      args || []
-    )
-  );
-
-  params.set(
-    'callback',
-    callback
-  );
-
-
-  const separator =
-    API_URL.indexOf('?') >= 0
-      ? '&'
-      : '?';
-
-
-  script.src =
-    API_URL +
-    separator +
-    params.toString();
-
-
-  /*
-   * Jika browser gagal memuatkan
-   * script JSONP.
-   */
-  script.onerror = function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    (failure || function(){})(
-      new Error(
-        'Tidak dapat menghubungi Google Apps Script.'
-      )
-    );
-
-  };
-
-
-  /*
-   * Debug untuk sementara.
-   * Boleh dilihat melalui F12 → Console.
-   */
-  console.log(
-    '[API REQUEST]',
-    action,
-    args
-  );
-
-  console.log(
-    '[API URL]',
-    script.src
-  );
-
-
-  document.head.appendChild(
-    script
-  );
-
-}
+    const callback = '__sskam_cb_' + (++apiSeq) + '_' + Date.now();
+    const script = document.createElement('script');
+    let timer = setTimeout(function(){ cleanup(); (failure || function(){})(new Error('Sambungan API tamat masa.')); }, 20000);
+    function cleanup(){ clearTimeout(timer); delete window[callback]; if(script.parentNode) script.parentNode.removeChild(script); }
+    window[callback] = function(payload){ cleanup(); if(payload && payload.ok) (success || function(){})(payload.data); else (failure || function(){})(new Error(payload && payload.message ? payload.message : 'Ralat API.')); };
+    const params = new URLSearchParams({api:'1',action:action,email:API_EMAIL,args:encodeApiArgs(args || []),callback:callback});
+    script.src = API_URL + (API_URL.indexOf('?')>=0?'&':'?') + params.toString();
+    script.onerror = function(){ cleanup(); (failure || function(){})(new Error('Tidak dapat menghubungi Google Apps Script.')); };
+    document.head.appendChild(script);
+  }
 
   function makeRun(success, failure) {
     const chain = {
@@ -1136,13 +1044,11 @@
       .withSuccessHandler(function(response) {
         if (!response || !response.ok) { alert(response && response.message ? response.message : 'Gagal login.'); return; }
         currentUser = response.user;
-currentYear = response.dashboard.year;
-events = response.events || [];
-
-setUserInterface();
-renderDashboardData(response.dashboard);
-populateEventSelects();
-loadRegistrationHouses();
+        currentYear = response.dashboard.year;
+        events = response.events || [];
+        setUserInterface();
+        renderDashboardData(response.dashboard);
+        populateEventSelects();
       })
       .withFailureHandler(function(error) { alert('Ralat sambungan: ' + error.message); })
       .getBootstrap();
@@ -1159,7 +1065,8 @@ loadRegistrationHouses();
     document.getElementById("welcomeText").textContent =
       "Selamat datang, " + name + ". Berikut ialah ringkasan sistem sukan semasa.";
 
-    
+    document.getElementById("houseBadge").textContent =
+      "Rumah: " + (currentUser.houseId || "Admin");
 
     const adminNav = Array.from(document.querySelectorAll(".nav button"))
       .find(function(btn){ return btn.textContent.indexOf("Admin") !== -1; });
@@ -1265,97 +1172,7 @@ loadRegistrationHouses();
       .withFailureHandler(function(error) { console.error(error); })
       .listEvents(currentYear);
   }
-function loadRegistrationHouses() {
 
-  google.script.run
-    .withSuccessHandler(function(houses) {
-
-      const select =
-        document.getElementById("registrationHouse");
-
-      if (!select) return;
-
-      houses = houses || [];
-
-      /*
-       * ADMIN
-       * Boleh memilih mana-mana rumah.
-       */
-      if (
-        currentUser &&
-        String(currentUser.role).toUpperCase() === "ADMIN"
-      ) {
-
-        select.innerHTML =
-          '<option value="">Pilih rumah sukan...</option>' +
-          houses.map(function(h) {
-
-            return `
-              <option value="${escapeAttr(h.id)}">
-                ${escapeHtml(h.name)}
-              </option>
-            `;
-
-          }).join("");
-
-        select.disabled = false;
-
-        return;
-      }
-
-
-      /*
-       * GURU RUMAH
-       * Rumah ditetapkan secara automatik.
-       */
-      if (
-        currentUser &&
-        currentUser.houseId
-      ) {
-
-        const house =
-          houses.find(function(h) {
-
-            return String(h.id) ===
-                   String(currentUser.houseId);
-
-          });
-
-
-        if (house) {
-
-          select.innerHTML =
-            `<option value="${escapeAttr(house.id)}">
-              ${escapeHtml(house.name)}
-            </option>`;
-
-          select.value =
-            house.id;
-
-          select.disabled = true;
-
-        }
-
-      }
-
-    })
-    .withFailureHandler(function(error) {
-
-      const select =
-        document.getElementById("registrationHouse");
-
-      if (select) {
-
-        select.innerHTML =
-          '<option value="">Gagal memuatkan rumah</option>';
-
-      }
-
-      console.error(error);
-
-    })
-    .listHouses(currentYear);
-}
   function populateEventSelects() {
     const options =
       '<option value="">Pilih acara...</option>' +
@@ -1365,229 +1182,119 @@ function loadRegistrationHouses() {
 
     document.getElementById("eventSelect").innerHTML = options;
     document.getElementById("laneEvent").innerHTML = options;
+
+    const screeningSelect = document.getElementById("screeningEvent");
+    if (screeningSelect) {
+      screeningSelect.innerHTML =
+        '<option value="">Pilih acara trek...</option>' +
+        events.filter(function(e){ return String(e.category || '').toUpperCase() === 'TREK'; })
+          .map(function(e){
+            return `<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`;
+          }).join("");
+    }
   }
 
-function loadStudents() {
+  function loadStudents() {
+    const eventId = document.getElementById("eventSelect").value;
+    const query = document.getElementById("studentSearch").value;
+    const list = document.getElementById("studentList");
 
-  const eventId =
-    document.getElementById("eventSelect").value;
+    if (!eventId) {
+      list.innerHTML = '<div class="empty">Pilih acara terlebih dahulu.</div>';
+      return;
+    }
 
-  const query =
-    document.getElementById("studentSearch").value;
-
-  const list =
-    document.getElementById("studentList");
-
-  const houseSelect =
-    document.getElementById("registrationHouse");
-
-  const houseId =
-    houseSelect ? houseSelect.value : "";
-
-
-  if (!eventId) {
-
-    list.innerHTML =
-      '<div class="empty">' +
-      'Pilih acara terlebih dahulu.' +
-      '</div>';
-
-    return;
-
-  }
-
-
-  if (!houseId) {
-
-    list.innerHTML =
-      '<div class="empty">' +
-      'Sila pilih rumah sukan terlebih dahulu.' +
-      '</div>';
-
-    return;
-
-  }
-
-
-  list.innerHTML =
-    '<div class="empty">Memuatkan murid...</div>';
-
-
-  google.script.run
-
-    .withSuccessHandler(function(data) {
-
-      if (!data || !data.length) {
-
-        list.innerHTML =
-          '<div class="empty">' +
-          'Tiada murid yang sepadan untuk rumah ini.' +
-          '</div>';
-
-        return;
-
-      }
-
-
+    if (!currentUser || !currentUser.houseId) {
       list.innerHTML =
-        data.map(function(s) {
+        '<div class="empty">Akaun ini belum mempunyai rumah sukan.</div>';
+      return;
+    }
 
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data.length) {
+          list.innerHTML = '<div class="empty">Tiada murid yang sepadan.</div>';
+          return;
+        }
+
+        list.innerHTML = data.map(function(s) {
           return `
             <label class="student">
-
-              <input
-                type="checkbox"
-                value="${escapeAttr(s.id)}"
-                ${s.registered ? "disabled" : ""}
-              >
+              <input type="checkbox"
+                     value="${escapeAttr(s.id)}"
+                     ${s.registered ? "disabled" : ""}>
 
               <div style="flex:1">
-
-                <div class="student-name">
-                  ${escapeHtml(s.name)}
-                </div>
-
+                <div class="student-name">${escapeHtml(s.name)}</div>
                 <div class="student-meta">
                   Darjah ${escapeHtml(s.grade)}
                   • ${escapeHtml(s.className)}
                   • ${escapeHtml(s.gender)}
                 </div>
-
               </div>
 
-              ${
-                s.registered
-                  ? '<span class="badge">✓ Sudah daftar</span>'
-                  : ''
-              }
-
+              ${s.registered
+                ? '<span class="badge">✓ Sudah daftar</span>'
+                : ""}
             </label>
           `;
-
         }).join("");
-
-    })
-
-    .withFailureHandler(function(error) {
-
-      list.innerHTML =
-        '<div class="empty">' +
-        escapeHtml(error.message) +
-        '</div>';
-
-    })
-
-    .listEligibleStudents(
-      currentYear,
-      eventId,
-      houseId,
-      query
-    );
-}
+      })
+      .withFailureHandler(function(error) {
+        list.innerHTML =
+          '<div class="empty">' + escapeHtml(error.message) + '</div>';
+      })
+      .listEligibleStudents(
+        currentYear,
+        eventId,
+        currentUser.houseId,
+        query
+      );
+  }
 
   function registerParticipants() {
+    const eventId = document.getElementById("eventSelect").value;
 
-  const eventId =
-    document.getElementById("eventSelect").value;
-
-  const houseId =
-    document.getElementById("registrationHouse").value;
-
-
-  const ids =
-    Array.from(
-      document.querySelectorAll(
-        "#studentList input[type=checkbox]:checked"
-      )
+    const ids = Array.from(
+      document.querySelectorAll("#studentList input[type=checkbox]:checked")
     ).map(function(input) {
-
       return input.value;
-
     });
 
+    if (!eventId) {
+      showMessage("registrationMessage", "Sila pilih acara.", false);
+      return;
+    }
 
-  if (!eventId) {
-
-    showMessage(
-      "registrationMessage",
-      "Sila pilih acara.",
-      false
-    );
-
-    return;
-
-  }
-
-
-  if (!houseId) {
-
-    showMessage(
-      "registrationMessage",
-      "Sila pilih rumah sukan.",
-      false
-    );
-
-    return;
-
-  }
-
-
-  if (!ids.length) {
-
-    showMessage(
-      "registrationMessage",
-      "Sila pilih sekurang-kurangnya seorang peserta.",
-      false
-    );
-
-    return;
-
-  }
-
-
-  google.script.run
-
-    .withSuccessHandler(function(response) {
-
+    if (!ids.length) {
       showMessage(
         "registrationMessage",
-        "✓ " +
-        (response.count || ids.length) +
-        " peserta berjaya didaftarkan.",
-        true
-      );
-
-      loadStudents();
-
-    })
-
-    .withFailureHandler(function(error) {
-
-      showMessage(
-        "registrationMessage",
-        error.message,
+        "Sila pilih sekurang-kurangnya seorang peserta.",
         false
       );
+      return;
+    }
 
-    })
+    google.script.run
+      .withSuccessHandler(function() {
+        showMessage(
+          "registrationMessage",
+          "✓ Peserta berjaya didaftarkan.",
+          true
+        );
+        loadStudents();
+      })
+      .withFailureHandler(function(error) {
+        showMessage("registrationMessage", error.message, false);
+      })
+      .registerParticipants({
+        year: currentYear,
+        eventId: eventId,
+        houseId: currentUser.houseId,
+        muridIds: ids
+      });
+  }
 
-    .registerParticipants({
-
-      year:
-        currentYear,
-
-      eventId:
-        eventId,
-
-      houseId:
-        houseId,
-
-      muridIds:
-        ids
-
-    });
-
-}
   function generateLanes() {
     const eventId = document.getElementById("laneEvent").value;
     const result = document.getElementById("laneResult");
@@ -1686,6 +1393,365 @@ function loadStudents() {
       .getIndividualRanking(currentYear);
   }
 
+
+
+  /* =========================
+     SARINGAN TREK — FASA 3B
+     ========================= */
+
+  let screeningEvents = [];
+  let screeningData = null;
+
+  function loadScreeningEvents() {
+    const select = document.getElementById("screeningEvent");
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Memuatkan acara trek...</option>';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        screeningEvents = data || [];
+
+        select.innerHTML =
+          '<option value="">Pilih acara trek...</option>' +
+          screeningEvents.map(function(e) {
+            return '<option value="' + escapeAttr(e.id) + '">' +
+              escapeHtml(e.name) +
+              ' — ' + Number(e.participantCount || 0) +
+              ' peserta / ' + Number(e.heatCount || 0) +
+              ' heat' +
+              '</option>';
+          }).join("");
+
+        if (!screeningEvents.length) {
+          select.innerHTML = '<option value="">Tiada acara memerlukan saringan</option>';
+        }
+      })
+      .withFailureHandler(function(error) {
+        select.innerHTML = '<option value="">Gagal memuatkan acara</option>';
+        showMessage("adminMsg", error && error.message ? error.message : String(error), false);
+      })
+      .getScreeningEvents(currentYear);
+  }
+
+  function loadScreeningEvent() {
+    const eventId = document.getElementById("screeningEvent").value;
+    const info = document.getElementById("screeningInfo");
+    const actions = document.getElementById("screeningActions");
+    const heats = document.getElementById("screeningHeats");
+    const status = document.getElementById("screeningStatus");
+
+    info.innerHTML = "";
+    actions.innerHTML = "";
+    heats.innerHTML = "";
+    screeningData = null;
+
+    if (!eventId) {
+      status.textContent = "Belum pilih acara";
+      return;
+    }
+
+    const event = screeningEvents.find(function(e) {
+      return String(e.id) === String(eventId);
+    });
+
+    if (!event) {
+      status.textContent = "Acara tidak ditemui";
+      return;
+    }
+
+    status.textContent = "Acara dipilih";
+
+    info.innerHTML = `
+      <div class="screening-stats">
+        <div class="screening-stat">
+          <span>Jumlah Peserta</span>
+          <strong>${Number(event.participantCount || 0)}</strong>
+        </div>
+        <div class="screening-stat">
+          <span>Jumlah Heat</span>
+          <strong>${Number(event.heatCount || 0)}</strong>
+        </div>
+        <div class="screening-stat">
+          <span>Slot Final</span>
+          <strong>8</strong>
+        </div>
+      </div>
+    `;
+
+    actions.innerHTML = `
+      <button class="btn btn-gold" onclick="generateScreeningWeb()">
+        🎲 Jana Saringan
+      </button>
+      <button class="btn btn-light" onclick="loadExistingScreening()">
+        ↻ Papar Saringan
+      </button>
+    `;
+  }
+
+  function generateScreeningWeb() {
+    const eventId = document.getElementById("screeningEvent").value;
+
+    if (!eventId) {
+      alert("Sila pilih acara trek.");
+      return;
+    }
+
+    if (!confirm("Jana saringan untuk acara ini? Undian saringan sedia ada akan digantikan.")) {
+      return;
+    }
+
+    const heats = document.getElementById("screeningHeats");
+    heats.innerHTML = '<div class="card"><div class="empty">🎲 Sedang menjana saringan...</div></div>';
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        alert(result && result.message ? result.message : "Saringan berjaya dijana.");
+        loadExistingScreening();
+      })
+      .withFailureHandler(function(error) {
+        heats.innerHTML = '<div class="card"><div class="message err" style="display:block">' +
+          escapeHtml(error && error.message ? error.message : String(error)) +
+          '</div></div>';
+      })
+      .createScreening(currentYear, eventId);
+  }
+
+  function loadExistingScreening() {
+    const eventId = document.getElementById("screeningEvent").value;
+
+    if (!eventId) {
+      alert("Sila pilih acara trek.");
+      return;
+    }
+
+    const heats = document.getElementById("screeningHeats");
+    heats.innerHTML = '<div class="card"><div class="empty">Memuatkan heat...</div></div>';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        screeningData = data || {};
+        renderScreeningHeats(screeningData);
+      })
+      .withFailureHandler(function(error) {
+        heats.innerHTML = '<div class="card"><div class="message err" style="display:block">' +
+          escapeHtml(error && error.message ? error.message : String(error)) +
+          '</div></div>';
+      })
+      .getScreeningData(currentYear, eventId);
+  }
+
+  function renderScreeningHeats(data) {
+    const container = document.getElementById("screeningHeats");
+
+    if (!data || !data.heats || !data.heats.length) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty">
+            Tiada heat dijana. Klik <strong>Jana Saringan</strong>.
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    let html = "";
+
+    data.heats.forEach(function(heat) {
+      html += `
+        <div class="card screening-heat">
+          <div class="card-header">
+            <div>
+              <div class="heat-title">🏃 HEAT ${escapeHtml(heat.heatNo)}</div>
+              <div class="heat-sub">${heat.participants.length} peserta</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Lorong</th>
+                  <th>Peserta</th>
+                  <th>Kelas</th>
+                  <th>Rumah</th>
+                  <th>Masa (s)</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+
+      heat.participants.forEach(function(p) {
+        html += `
+          <tr>
+            <td><strong style="font-size:16px">${escapeHtml(p.lane)}</strong></td>
+            <td>
+              <strong>${escapeHtml(p.name || p.muridId)}</strong>
+              <div style="font-size:10px;color:#6b7785">
+                ${escapeHtml(p.muridId)}
+              </div>
+            </td>
+            <td>${escapeHtml(p.className || "-")}</td>
+            <td>${escapeHtml(p.houseName || p.houseId || "-")}</td>
+            <td>
+              <input
+                class="screening-time"
+                type="number"
+                step="0.01"
+                min="0"
+                data-murid="${escapeAttr(p.muridId)}"
+                value="${escapeAttr(p.time || "")}"
+                placeholder="0.00">
+            </td>
+          </tr>
+        `;
+      });
+
+      html += `
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+      <div class="card">
+        <div class="actions" style="margin-top:0">
+          <button class="btn btn-primary" onclick="saveAllScreeningTimesWeb()">
+            💾 Simpan Keputusan Saringan
+          </button>
+          <button class="btn btn-gold" onclick="finalizeScreeningWeb()">
+            🏆 Tentukan 8 Terpantas
+          </button>
+        </div>
+        <div style="font-size:11px;color:#6b7785;margin-top:10px">
+          Masukkan masa dalam saat, contoh: <strong>14.82</strong>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  }
+
+  function saveAllScreeningTimesWeb() {
+    if (!screeningData) {
+      alert("Sila pilih dan papar saringan dahulu.");
+      return;
+    }
+
+    const results = Array.from(document.querySelectorAll(".screening-time"))
+      .map(function(input) {
+        return {
+          muridId: input.dataset.murid,
+          time: input.value.trim()
+        };
+      })
+      .filter(function(x) {
+        return x.time !== "";
+      });
+
+    if (!results.length) {
+      alert("Tiada masa dimasukkan.");
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        alert(result && result.message ? result.message : "Keputusan berjaya disimpan.");
+        loadExistingScreening();
+      })
+      .withFailureHandler(function(error) {
+        alert("Ralat: " + (error && error.message ? error.message : String(error)));
+      })
+      .saveScreeningTimes({
+        year: currentYear,
+        eventId: screeningData.eventId || document.getElementById("screeningEvent").value,
+        results: results
+      });
+  }
+
+  function finalizeScreeningWeb() {
+    if (!screeningData) {
+      alert("Sila papar saringan dahulu.");
+      return;
+    }
+
+    if (!confirm("Tentukan 8 peserta terpantas ke final?")) {
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showScreeningFinalists(result);
+      })
+      .withFailureHandler(function(error) {
+        alert("Ralat: " + (error && error.message ? error.message : String(error)));
+      })
+      .finalizeScreening({
+        year: currentYear,
+        eventId: screeningData.eventId || document.getElementById("screeningEvent").value
+      });
+  }
+
+  function showScreeningFinalists(result) {
+    const container = document.getElementById("screeningHeats");
+    const participants = (result && (result.participants || result.finalists)) || [];
+
+    if (!participants.length) {
+      alert("Tiada peserta final diterima.");
+      return;
+    }
+
+    let html = `
+      <div class="card finalist">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🏆 8 PESERTA TERPANTAS KE FINAL</div>
+            <div class="card-sub">
+              ${participants.length} peserta layak ke final
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Peserta</th>
+                <th>Rumah</th>
+                <th>Masa</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    participants.forEach(function(p, index) {
+      html += `
+        <tr>
+          <td><strong>${index + 1}</strong></td>
+          <td>
+            <strong>${escapeHtml(p.name || p.muridId)}</strong>
+            <div style="font-size:10px;color:#6b7785">
+              ${escapeHtml(p.muridId || "")}
+            </div>
+          </td>
+          <td>${escapeHtml(p.houseName || p.houseId || "-")}</td>
+          <td><strong>${escapeHtml(p.time || "-")} s</strong></td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    container.insertAdjacentHTML("afterbegin", html);
+  }
 
   /* =========================
      ADMIN MODULE — FASA 2A
@@ -2077,6 +2143,7 @@ function loadStudents() {
     const titles = {
       dashboard: ["Dashboard", "Ringkasan keseluruhan kejohanan"],
       registration: ["Daftar Peserta", "Pendaftaran peserta mengikut rumah sukan"],
+      screening: ["Saringan Trek", "Pengurusan saringan acara trek"],
       lanes: ["Undian Lorong", "Penjanaan lorong secara automatik"],
       results: ["Keputusan", "Rekod keputusan dan mata peserta"],
       individual: ["Peserta Terbaik", "Ranking peserta berdasarkan mata individu"],
@@ -2090,6 +2157,7 @@ function loadStudents() {
     }
 
     if (id === "individual") loadIndividualRanking();
+    if (id === "screening") loadScreeningEvents();
     if (id === "admin") loadAdminAll();
 
     if (window.innerWidth <= 760) {
