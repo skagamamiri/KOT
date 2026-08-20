@@ -1,3405 +1,2314 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Sukan SK Agama (MIS) Miri</title>
 
-/**
- * SISTEM MATA SUKAN
- * SK AGAMA (MIS) MIRI
- * Google Apps Script + Google Sheets
- *
- * IMPORTANT:
- * 1. Buka Google Sheet yang akan menjadi database.
- * 2. Extensions > Apps Script.
- * 3. Gantikan Code.gs dengan kod ini.
- * 4. Index.html yang diberi bersama fail ini digunakan sebagai frontend.
- * 5. Jalankan setupDatabase() sekali.
- */
-
-const CONFIG = {
-  SCHOOL_NAME: 'SK Agama (MIS) Miri',
-  DEFAULT_YEAR: new Date().getFullYear(),
-  HOUSE_COUNT: 4,
-  LANE_COUNT: 8,
-  LANES_PER_HOUSE: 2
-};
-
-const SHEETS = {
-  SETTINGS: 'SETTINGS',
-  YEARS: 'YEARS',
-  HOUSES: 'HOUSES',
-  USERS: 'USERS',
-  STUDENTS: 'STUDENTS',
-  EVENTS: 'EVENTS',
-  PARTICIPANTS: 'PARTICIPANTS',
-  HEATS: 'HEATS',
-  LANES: 'LANES',
-  RESULTS: 'RESULTS',
-  POINTS: 'POINTS',
-  HOUSE_ASSIGNMENTS: 'HOUSE_ASSIGNMENTS'
-};
-
-const CACHE = { PREFIX: 'SSKAM_', TTL: 300, DASHBOARD_TTL: 15 };
-const CACHEABLE_SHEETS = ['SETTINGS','YEARS','HOUSES','USERS','EVENTS','POINTS'];
-
-const HEADERS = {
-  SETTINGS: ['KEY', 'VALUE'],
-  YEARS: ['YEAR', 'NAME', 'ACTIVE'],
-  HOUSES: ['YEAR', 'HOUSE_ID', 'HOUSE_NAME', 'ACTIVE'],
-  USERS: ['EMAIL', 'NAME', 'ROLE', 'HOUSE_ID', 'ACTIVE'],
-  STUDENTS: ['MURID_ID', 'NAME', 'NO_KP', 'GRADE', 'CLASS_NAME', 'GENDER', 'HOUSE_ID', 'ACTIVE'],
-  EVENTS: ['EVENT_ID', 'YEAR', 'EVENT_NAME', 'CATEGORY', 'GENDER', 'AGE_GROUP', 'LANE_EVENT', 'ACTIVE'],
-  PARTICIPANTS: ['YEAR', 'EVENT_ID', 'MURID_ID', 'HOUSE_ID', 'REGISTERED_AT', 'REGISTERED_BY', 'STATUS'],
-  HEATS: ['YEAR', 'EVENT_ID', 'HEAT_NO', 'MURID_ID', 'HOUSE_ID', 'LANE', 'POSITION', 'TIME', 'QUALIFIED', 'STATUS', 'CREATED_AT', 'CREATED_BY'],
-  LANES: ['YEAR', 'EVENT_ID', 'MURID_ID', 'HOUSE_ID', 'LANE', 'DRAW_NO', 'CREATED_AT', 'CREATED_BY'],
-  RESULTS: ['RESULT_ID', 'YEAR', 'EVENT_ID', 'MURID_ID', 'HOUSE_ID', 'POSITION', 'POINTS', 'MEDAL', 'RECORDED_AT', 'RECORDED_BY'],
-  POINTS: ['POSITION', 'POINTS', 'MEDAL'],
-  HOUSE_ASSIGNMENTS: ['YEAR', 'MURID_ID', 'HOUSE_ID', 'ACTIVE', 'ASSIGNED_AT', 'ASSIGNED_BY']
-};
-
-/* =========================
-   WEB APP
-   ========================= */
-
-function doGet(e) {
-  // API mode: digunakan oleh frontend GitHub Pages.
-  if (e && e.parameter && e.parameter.api === '1') {
-    return apiDoGet_(e);
-  }
-
-  return HtmlService
-    .createTemplateFromFile('Index')
-    .evaluate()
-    .setTitle(CONFIG.SCHOOL_NAME + ' - Sistem Sukan')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-/* =========================
-   GITHUB API BRIDGE — FASA 2B
-   ========================= */
-
-var API_CONTEXT_EMAIL = '';
-
-function apiDoGet_(e) {
-  var callback = String(e.parameter.callback || '');
-  var action = String(e.parameter.action || '');
-  var email = String(e.parameter.email || '').trim().toLowerCase();
-  var args = [];
-
-  try {
-    if (!action) throw new Error('API action tidak diberikan.');
-
-    // API_EMAIL hanya digunakan untuk memetakan request kepada USERS.
-    // Ia tidak menggantikan login sebenar; pengukuhan authentication akan dibuat
-    // dalam fasa keselamatan seterusnya.
-    API_CONTEXT_EMAIL = email;
-
-    if (e.parameter.args) {
-      var json = Utilities.newBlob(Utilities.base64DecodeWebSafe(String(e.parameter.args))).getDataAsString();
-      args = JSON.parse(json);
-      if (!Array.isArray(args)) args = [args];
+  <style>
+    :root {
+      --navy:#102a43;
+      --navy2:#173f63;
+      --gold:#d6a84f;
+      --bg:#f4f7fb;
+      --card:#ffffff;
+      --text:#17202a;
+      --muted:#6b7785;
+      --border:#e5eaf0;
+      --green:#17845b;
+      --red:#c73b3b;
+      --shadow:0 8px 28px rgba(16,42,67,.08);
     }
 
-    var fn = this[action];
-    if (typeof fn !== 'function' || action.indexOf('_') === 0 || action === 'apiDoGet_' || action === 'doGet' || action === 'setupDatabase') {
-      throw new Error('API action tidak dibenarkan: ' + action);
+    * { box-sizing:border-box; }
+
+    body {
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      background:var(--bg);
+      color:var(--text);
     }
 
-    var result = fn.apply(this, args);
-    return apiJsonResponse_(callback, {ok:true, data:result});
-  } catch (err) {
-    return apiJsonResponse_(callback, {ok:false, message: err && err.message ? err.message : String(err)});
-  } finally {
-    API_CONTEXT_EMAIL = '';
-  }
-}
+    button,input,select { font:inherit; }
 
-function apiJsonResponse_(callback, payload) {
-  var text = JSON.stringify(payload);
-  if (callback) {
-    // callback hanya dibenarkan sebagai nama JS ringkas untuk JSONP.
-    if (!/^[A-Za-z_$][0-9A-Za-z_$]*$/.test(callback)) {
-      return ContentService.createTextOutput(JSON.stringify({ok:false,message:'Callback tidak sah.'}))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-    return ContentService.createTextOutput(callback + '(' + text + ');')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-  return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
-}
+    .app { min-height:100vh; display:flex; }
 
-/* =========================
-   API CONFIGURATION
-   ========================= */
-
-function getWebApiInfo() {
-  return {
-    ok: true,
-    school: CONFIG.SCHOOL_NAME,
-    mode: 'github-jsonp',
-    message: 'API Fasa 2B aktif.'
-  };
-}
-
-/* =========================
-   INITIAL SETUP
-   ========================= */
-
-function setupDatabase() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  Object.keys(SHEETS).forEach(function(key) {
-    const name = SHEETS[key];
-    let sh = ss.getSheetByName(name);
-
-    if (!sh) {
-      sh = ss.insertSheet(name);
+    .sidebar {
+      width:255px;
+      background:linear-gradient(180deg,var(--navy),#0b2033);
+      color:#fff;
+      position:fixed;
+      inset:0 auto 0 0;
+      z-index:20;
+      display:flex;
+      flex-direction:column;
     }
 
-    const headers = HEADERS[key];
-    if (headers && sh.getLastRow() === 0) {
-      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sh.setFrozenRows(1);
-      sh.getRange(1, 1, 1, headers.length)
-        .setFontWeight('bold');
-    }
-  });
-
-  seedDefaultData_();
-
-  return {
-    ok: true,
-    message: 'Database berjaya disediakan.'
-  };
-}
-
-function seedDefaultData_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const year = CONFIG.DEFAULT_YEAR;
-
-  // YEAR
-  const years = getSheetObjects_(SHEETS.YEARS);
-  if (!years.some(function(x) { return Number(x.YEAR) === year; })) {
-    appendObject_(SHEETS.YEARS, {
-      YEAR: year,
-      NAME: 'Sukan Tahunan ' + year,
-      ACTIVE: true
-    });
-  }
-
-  // HOUSES
-  const houses = getSheetObjects_(SHEETS.HOUSES)
-    .filter(function(x) { return Number(x.YEAR) === year; });
-
-  if (houses.length === 0) {
-    const defaults = [
-      ['H1', 'Rumah 1'],
-      ['H2', 'Rumah 2'],
-      ['H3', 'Rumah 3'],
-      ['H4', 'Rumah 4']
-    ];
-
-    defaults.forEach(function(h) {
-      appendObject_(SHEETS.HOUSES, {
-        YEAR: year,
-        HOUSE_ID: h[0],
-        HOUSE_NAME: h[1],
-        ACTIVE: true
-      });
-    });
-  }
-
-  // POINTS
-  const points = getSheetObjects_(SHEETS.POINTS);
-  if (points.length === 0) {
-    [
-      [1, 10, 'EMAS'],
-      [2, 8, 'PERAK'],
-      [3, 6, 'GANGSA'],
-      [4, 5, ''],
-      [5, 4, ''],
-      [6, 3, ''],
-      [7, 2, ''],
-      [8, 1, '']
-    ].forEach(function(p) {
-      appendObject_(SHEETS.POINTS, {
-        POSITION: p[0],
-        POINTS: p[1],
-        MEDAL: p[2]
-      });
-    });
-  }
-}
-
-/* =========================
-   USER
-   ========================= */
-
-function me(emailOverride) {
-  const email = String(emailOverride || API_CONTEXT_EMAIL || Session.getActiveUser().getEmail() || '').trim().toLowerCase();
-
-  if (!email) {
-    return {
-      ok: false,
-      message: 'Email Google tidak dapat dikenal pasti. Pastikan web app menggunakan akaun Google sekolah.'
-    };
-  }
-
-  const users = getSheetObjects_(SHEETS.USERS);
-
-  let user = users.find(function(x) {
-    return String(x.EMAIL).toLowerCase() === email.toLowerCase() &&
-           toBool_(x.ACTIVE);
-  });
-
-  // Admin pertama: jika email tidak wujud tetapi USERS masih kosong,
-  // jadikan pengguna semasa admin.
-  if (!user && users.length === 0) {
-    appendObject_(SHEETS.USERS, {
-      EMAIL: email,
-      NAME: email.split('@')[0],
-      ROLE: 'ADMIN',
-      HOUSE_ID: '',
-      ACTIVE: true
-    });
-
-    user = {
-      EMAIL: email,
-      NAME: email.split('@')[0],
-      ROLE: 'ADMIN',
-      HOUSE_ID: '',
-      ACTIVE: true
-    };
-  }
-
-  if (!user) {
-    return {
-      ok: false,
-      message: 'Akaun anda belum didaftarkan dalam USERS: ' + email
-    };
-  }
-
-  return {
-    ok: true,
-    user: {
-      email: user.EMAIL,
-      name: user.NAME,
-      role: user.ROLE,
-      houseId: user.HOUSE_ID || ''
-    }
-  };
-}
-
-/* =========================
-   DASHBOARD
-   ========================= */
-
-function getDashboard() {
-  return getCachedDashboard_();
-}
-
-function buildDashboard_() {
-  const year = getActiveYear_();
-  const houses = listHouses(year);
-  const results = getSheetObjects_(SHEETS.RESULTS).filter(function(r) { return Number(r.YEAR) === year; });
-  const ranking = houses.map(function(h) {
-    const rows = results.filter(function(r) { return String(r.HOUSE_ID) === String(h.id); });
-    return {
-      id: h.id,
-      name: h.name,
-      points: rows.reduce(function(sum, r) { return sum + Number(r.POINTS || 0); }, 0),
-      gold: rows.filter(function(r) { return String(r.MEDAL) === 'EMAS'; }).length,
-      silver: rows.filter(function(r) { return String(r.MEDAL) === 'PERAK'; }).length,
-      bronze: rows.filter(function(r) { return String(r.MEDAL) === 'GANGSA'; }).length
-    };
-  });
-  ranking.sort(function(a,b){ return b.points-a.points || b.gold-a.gold || b.silver-a.silver || b.bronze-a.bronze; });
-  ranking.forEach(function(h,i){ h.rank=i+1; });
-  return {
-    year: year,
-    houses: ranking,
-    eventCount: getSheetObjects_(SHEETS.EVENTS).filter(function(e){return Number(e.YEAR)===year && toBool_(e.ACTIVE);}).length,
-    studentCount: getSheetObjects_(SHEETS.STUDENTS).filter(function(s){return toBool_(s.ACTIVE);}).length
-  };
-}
-
-function getBootstrap() {
-  const userResult = me();
-  if (!userResult.ok) return userResult;
-  const dashboard = getCachedDashboard_();
-  const year = dashboard.year;
-  return {
-    ok: true,
-    user: userResult.user,
-    dashboard: dashboard,
-    events: listEvents(year)
-  };
-}
-
-function getAdminBootstrap() {
-  requireAdmin_();
-  const year = getActiveYear_();
-  return {
-    year: year,
-    years: listYears(),
-    houses: listHouses(year),
-    events: listEvents(year),
-    users: listUsers(),
-    points: listPoints()
-  };
-}
-
-/* =========================
-   YEARS
-   ========================= */
-
-function getActiveYear_() {
-  const years = getSheetObjects_(SHEETS.YEARS)
-    .filter(function(x) { return toBool_(x.ACTIVE); });
-
-  if (years.length) {
-    return Number(years[0].YEAR);
-  }
-
-  return CONFIG.DEFAULT_YEAR;
-}
-
-function listYears() {
-  return getSheetObjects_(SHEETS.YEARS).map(function(x) {
-    return {
-      year: Number(x.YEAR),
-      name: x.NAME,
-      active: toBool_(x.ACTIVE)
-    };
-  });
-}
-
-function saveYear(data) {
-  requireAdmin_();
-  var year = Number(data.year);
-  var name = String(data.name || ('Sukan Tahunan ' + year)).trim();
-  if (!year || year < 2000) throw new Error('Tahun tidak sah.');
-  if (!name) throw new Error('Nama tahun wajib diisi.');
-
-  var rows = getSheetObjects_(SHEETS.YEARS);
-  var found = rows.some(function(x) { return Number(x.YEAR) === year; });
-  if (found) {
-    updateObjectByKey_(SHEETS.YEARS, 'YEAR', year, {
-      YEAR: year, NAME: name, ACTIVE: data.active === true
-    });
-  } else {
-    appendObject_(SHEETS.YEARS, {YEAR: year, NAME: name, ACTIVE: data.active === true});
-    ensureYearHouses_(year);
-  }
-  if (data.active === true) setActiveYear(year);
-  clearSystemCache_();
-  return {ok:true, year:year};
-}
-
-function ensureYearHouses_(year) {
-  var existing = getSheetObjects_(SHEETS.HOUSES).filter(function(x){return Number(x.YEAR)===Number(year);});
-  if (existing.length) return;
-  var source = getSheetObjects_(SHEETS.HOUSES).filter(function(x){return Number(x.YEAR)===Number(getActiveYear_());}).sort(function(a,b){return String(a.HOUSE_ID).localeCompare(String(b.HOUSE_ID));});
-  if (!source.length) source=[{HOUSE_ID:'H1',HOUSE_NAME:'Rumah 1'},{HOUSE_ID:'H2',HOUSE_NAME:'Rumah 2'},{HOUSE_ID:'H3',HOUSE_NAME:'Rumah 3'},{HOUSE_ID:'H4',HOUSE_NAME:'Rumah 4'}];
-  source.slice(0,4).forEach(function(h){appendObject_(SHEETS.HOUSES,{YEAR:Number(year),HOUSE_ID:String(h.HOUSE_ID),HOUSE_NAME:String(h.HOUSE_NAME),ACTIVE:true});});
-}
-
-function setActiveYear(year) {
-  requireAdmin_();
-  year = Number(year);
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.YEARS);
-  var values = sh.getDataRange().getValues();
-  if (values.length < 2) throw new Error('Tiada tahun dalam database.');
-  var headers = values[0];
-  var yearCol = headers.indexOf('YEAR');
-  var activeCol = headers.indexOf('ACTIVE');
-  var found = false;
-  for (var r=1; r<values.length; r++) {
-    if (Number(values[r][yearCol]) === year) found = true;
-    sh.getRange(r+1, activeCol+1).setValue(Number(values[r][yearCol]) === year);
-  }
-  if (!found) throw new Error('Tahun ' + year + ' tidak ditemui.');
-  clearSystemCache_();
-  return {ok:true, year:year};
-}
-
-function deleteYear(year) {
-  requireAdmin_();
-  year = Number(year);
-  var rows = getSheetObjects_(SHEETS.YEARS);
-  var target = rows.find(function(x){return Number(x.YEAR)===year;});
-  if (!target) throw new Error('Tahun tidak ditemui.');
-  if (toBool_(target.ACTIVE)) throw new Error('Tahun aktif tidak boleh dibuang. Aktifkan tahun lain dahulu.');
-  deleteRows_(SHEETS.YEARS, function(r){return Number(r.YEAR)===year;});
-  clearSystemCache_();
-  return {ok:true};
-}
-
-/* =========================
-   HOUSES
-   ========================= */
-
-function listHouses(year) {
-  year = Number(year || getActiveYear_());
-
-  return getSheetObjects_(SHEETS.HOUSES)
-    .filter(function(x) {
-      return Number(x.YEAR) === year && toBool_(x.ACTIVE);
-    })
-    .map(function(x) {
-      return {
-        id: String(x.HOUSE_ID),
-        name: String(x.HOUSE_NAME)
-      };
-    });
-}
-
-function saveHouse(data) {
-  requireAdmin_();
-
-  const year = Number(data.year);
-  const id = String(data.id || Utilities.getUuid());
-  const name = String(data.name || '').trim();
-
-  if (!name) throw new Error('Nama rumah wajib diisi.');
-
-  const sh = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(SHEETS.HOUSES);
-
-  const rows = getSheetObjects_(SHEETS.HOUSES);
-  const found = rows.find(function(x) {
-    return Number(x.YEAR) === year &&
-           String(x.HOUSE_ID) === id;
-  });
-
-  const obj = {
-    YEAR: year,
-    HOUSE_ID: id,
-    HOUSE_NAME: name,
-    ACTIVE: data.active !== false
-  };
-
-  if (found) {
-    updateObjectByKey_(SHEETS.HOUSES, 'HOUSE_ID', id, obj, function(row) {
-      return Number(row.YEAR) === year;
-    });
-  } else {
-    appendObject_(SHEETS.HOUSES, obj);
-  }
-
-  clearSystemCache_();
-  return { ok: true };
-}
-
-/* =========================
-   EVENTS
-   ========================= */
-
-function listEvents(year) {
-  year = Number(year || getActiveYear_());
-
-  return getSheetObjects_(SHEETS.EVENTS)
-    .filter(function(x) {
-      return Number(x.YEAR) === year && toBool_(x.ACTIVE);
-    })
-    .map(function(x) {
-      return {
-        id: String(x.EVENT_ID),
-        name: String(x.EVENT_NAME),
-        category: String(x.CATEGORY || ''),
-        gender: String(x.GENDER || ''),
-        ageGroup: String(x.AGE_GROUP || ''),
-        laneEvent: toBool_(x.LANE_EVENT)
-      };
-    });
-}
-
-function saveEvent(data) {
-  requireAdmin_();
-
-  const id = String(data.id || Utilities.getUuid());
-  const obj = {
-    EVENT_ID: id,
-    YEAR: Number(data.year || getActiveYear_()),
-    EVENT_NAME: String(data.name || '').trim(),
-    CATEGORY: String(data.category || ''),
-    GENDER: String(data.gender || ''),
-    AGE_GROUP: String(data.ageGroup || ''),
-    LANE_EVENT: data.laneEvent === true,
-    ACTIVE: data.active !== false
-  };
-
-  if (!obj.EVENT_NAME) throw new Error('Nama acara wajib diisi.');
-
-  const rows = getSheetObjects_(SHEETS.EVENTS);
-  const found = rows.some(function(x) {
-    return String(x.EVENT_ID) === id;
-  });
-
-  if (found) {
-    updateObjectByKey_(SHEETS.EVENTS, 'EVENT_ID', id, obj);
-  } else {
-    appendObject_(SHEETS.EVENTS, obj);
-  }
-
-  clearSystemCache_();
-  return { ok: true, id: id };
-}
-
-function deactivateEvent(id) {
-  requireAdmin_();
-  id=String(id||'');
-  if(!id) throw new Error('Acara tidak sah.');
-  updateObjectByKey_(SHEETS.EVENTS,'EVENT_ID',id,{ACTIVE:false});
-  clearSystemCache_();
-  return {ok:true};
-}
-
-function deactivateHouse(year,id) {
-  requireAdmin_();
-  year=Number(year); id=String(id||'');
-  updateObjectByKey_(SHEETS.HOUSES,'HOUSE_ID',id,{YEAR:year,HOUSE_ID:id,HOUSE_NAME:'',ACTIVE:false},function(r){return Number(r.YEAR)===year;});
-  clearSystemCache_();
-  return {ok:true};
-}
-
-function deactivateStudent(id) {
-  requireAdmin_();
-  id=String(id||'');
-  updateObjectByKey_(SHEETS.STUDENTS,'MURID_ID',id,{ACTIVE:false});
-  clearSystemCache_();
-  return {ok:true};
-}
-
-/* =========================
-   STUDENTS
-   ========================= */
-
-function listStudents(query, year) {
-  requireAdmin_();
-  year = Number(year || getActiveYear_());
-  var q = String(query || '').toLowerCase().trim();
-
-  return getSheetObjects_(SHEETS.STUDENTS)
-    .filter(function(s) {
-      if (!toBool_(s.ACTIVE)) return false;
-      if (!q) return true;
-      return [s.MURID_ID,s.NAME,s.NO_KP,s.GRADE,s.CLASS_NAME,s.GENDER].join(' ').toLowerCase().indexOf(q) !== -1;
-    })
-    .map(function(s) {
-      var x = studentToClient_(s);
-      x.houseId = getStudentHouse_(year, s.MURID_ID) || String(s.HOUSE_ID || '');
-      return x;
-    });
-}
-
-function listEligibleStudents(year, eventId, houseId, query) {
-  year = Number(year || getActiveYear_());
-  houseId = String(houseId || '');
-
-  const current = getCurrentUser_();
-  if (current.role !== 'ADMIN' && String(current.houseId) !== houseId) {
-    throw new Error('Anda hanya boleh mengurus rumah sukan sendiri.');
-  }
-
-  const registered = getSheetObjects_(SHEETS.PARTICIPANTS)
-    .filter(function(p) {
-      return Number(p.YEAR) === year &&
-             String(p.EVENT_ID) === String(eventId) &&
-             String(p.HOUSE_ID) === houseId &&
-             String(p.STATUS || 'ACTIVE') === 'ACTIVE';
-    })
-    .map(function(p) { return String(p.MURID_ID); });
-
-  const q = String(query || '').toLowerCase().trim();
-
-  return getSheetObjects_(SHEETS.STUDENTS)
-    .filter(function(s) {
-      if (!toBool_(s.ACTIVE)) return false;
-      if (String(getStudentHouse_(year, s.MURID_ID) || s.HOUSE_ID || '') !== houseId) return false;
-
-      if (!q) return true;
-
-      return [
-        s.NAME,
-        s.GRADE,
-        s.CLASS_NAME,
-        s.MURID_ID
-      ].join(' ').toLowerCase().indexOf(q) !== -1;
-    })
-    .map(function(s) {
-      const x = studentToClient_(s);
-      x.registered = registered.indexOf(String(s.MURID_ID)) !== -1;
-      return x;
-    });
-}
-
-function saveStudent(data) {
-  requireAdmin_();
-
-  const id = String(data.id || Utilities.getUuid());
-
-  const obj = {
-    MURID_ID: id,
-    NAME: String(data.name || '').trim(),
-    NO_KP: String(data.noKp || ''),
-    GRADE: String(data.grade || ''),
-    CLASS_NAME: String(data.className || ''),
-    GENDER: String(data.gender || ''),
-    HOUSE_ID: String(data.houseId || ''),
-    ACTIVE: data.active !== false
-  };
-
-  if (!obj.NAME) throw new Error('Nama murid wajib diisi.');
-
-  const rows = getSheetObjects_(SHEETS.STUDENTS);
-  const found = rows.some(function(x) {
-    return String(x.MURID_ID) === id;
-  });
-
-  if (found) {
-    updateObjectByKey_(SHEETS.STUDENTS, 'MURID_ID', id, obj);
-  } else {
-    appendObject_(SHEETS.STUDENTS, obj);
-  }
-
-  var year = Number(data.year || getActiveYear_());
-  if (obj.HOUSE_ID) assignStudentHouse_(year, id, obj.HOUSE_ID);
-
-  clearSystemCache_();
-  return { ok: true, id: id };
-}
-
-function importStudents(rows) {
-  requireAdmin_();
-
-  if (!Array.isArray(rows)) {
-    throw new Error('Data murid mesti dalam bentuk senarai.');
-  }
-
-  rows.forEach(function(s) {
-    saveStudent({
-      id: s.MURID_ID || s.id || Utilities.getUuid(),
-      name: s.NAME || s.name,
-      noKp: s.NO_KP || s.noKp || '',
-      grade: s.GRADE || s.grade || '',
-      className: s.CLASS_NAME || s.className || '',
-      gender: s.GENDER || s.gender || '',
-      houseId: s.HOUSE_ID || s.houseId || '',
-      active: true
-    });
-  });
-
-  return {
-    ok: true,
-    count: rows.length
-  };
-}
-
-function studentToClient_(s) {
-  return {
-    id: String(s.MURID_ID),
-    name: String(s.NAME),
-    noKp: String(s.NO_KP || ''),
-    grade: String(s.GRADE || ''),
-    className: String(s.CLASS_NAME || ''),
-    gender: String(s.GENDER || ''),
-    houseId: String(s.HOUSE_ID || '')
-  };
-}
-
-/* =========================
-   HOUSE ASSIGNMENTS
-   ========================= */
-
-function assignStudentHouse_(year, muridId, houseId) {
-  year = Number(year);
-  muridId = String(muridId);
-  houseId = String(houseId || '');
-  if (!year || !muridId) throw new Error('Maklumat penempatan murid tidak lengkap.');
-
-  var rows = getSheetObjects_(SHEETS.HOUSE_ASSIGNMENTS);
-  var found = rows.some(function(x){
-    return Number(x.YEAR)===year && String(x.MURID_ID)===muridId;
-  });
-
-  var obj = {YEAR:year,MURID_ID:muridId,HOUSE_ID:houseId,ACTIVE:true,ASSIGNED_AT:new Date(),ASSIGNED_BY:getCurrentUser_().email};
-  if (found) {
-    updateObjectByKey_(SHEETS.HOUSE_ASSIGNMENTS, 'MURID_ID', muridId, obj, function(r){return Number(r.YEAR)===year;});
-  } else {
-    appendObject_(SHEETS.HOUSE_ASSIGNMENTS, obj);
-  }
-  return {ok:true};
-}
-
-function getStudentHouse_(year, muridId) {
-  var rows = getSheetObjects_(SHEETS.HOUSE_ASSIGNMENTS);
-  var row = rows.find(function(x){
-    return Number(x.YEAR)===Number(year) && String(x.MURID_ID)===String(muridId) && toBool_(x.ACTIVE);
-  });
-  return row ? String(row.HOUSE_ID || '') : '';
-}
-
-function assignStudentHouse(data) {
-  requireAdmin_();
-  var year = Number(data.year || getActiveYear_());
-  var muridId = String(data.muridId || '');
-  var houseId = String(data.houseId || '');
-  if (!muridId || !houseId) throw new Error('Murid dan rumah sukan wajib dipilih.');
-  var houses = listHouses(year);
-  if (!houses.some(function(h){return h.id===houseId;})) throw new Error('Rumah sukan tidak sah untuk tahun ini.');
-  return assignStudentHouse_(year, muridId, houseId);
-}
-
-function listHouseAssignments(year) {
-  requireAdmin_();
-  year = Number(year || getActiveYear_());
-  var students = getSheetObjects_(SHEETS.STUDENTS);
-  return students.filter(function(s){return toBool_(s.ACTIVE);}).map(function(s){
-    var x = studentToClient_(s);
-    x.houseId = getStudentHouse_(year, s.MURID_ID) || String(s.HOUSE_ID || '');
-    return x;
-  });
-}
-
-/* =========================
-   ADMIN USERS
-   ========================= */
-
-function listUsers() {
-  requireAdmin_();
-  return getSheetObjects_(SHEETS.USERS).map(function(x){
-    return {email:String(x.EMAIL||''),name:String(x.NAME||''),role:String(x.ROLE||''),houseId:String(x.HOUSE_ID||''),active:toBool_(x.ACTIVE)};
-  });
-}
-
-function saveUser(data) {
-  requireAdmin_();
-  var email = String(data.email || '').trim().toLowerCase();
-  var name = String(data.name || '').trim();
-  var role = String(data.role || 'GURU_RUMAH').toUpperCase();
-  var houseId = String(data.houseId || '');
-  if (!email || email.indexOf('@')===-1) throw new Error('Email tidak sah.');
-  if (!name) throw new Error('Nama guru wajib diisi.');
-  if (['ADMIN','GURU_RUMAH','URUS_SETIA'].indexOf(role)===-1) throw new Error('Peranan tidak sah.');
-  if (role==='GURU_RUMAH' && !houseId) throw new Error('Guru rumah mesti ditetapkan kepada rumah.');
-  var rows = getSheetObjects_(SHEETS.USERS);
-  var found = rows.some(function(x){return String(x.EMAIL).toLowerCase()===email;});
-  var obj={EMAIL:email,NAME:name,ROLE:role,HOUSE_ID:houseId,ACTIVE:data.active!==false};
-  if(found) updateObjectByKey_(SHEETS.USERS,'EMAIL',email,obj); else appendObject_(SHEETS.USERS,obj);
-  clearSystemCache_();
-  return {ok:true};
-}
-
-/* =========================
-   ADMIN POINTS
-   ========================= */
-
-function listPoints() {
-  requireAdmin_();
-  return getSheetObjects_(SHEETS.POINTS).sort(function(a,b){return Number(a.POSITION)-Number(b.POSITION);}).map(function(x){return {position:Number(x.POSITION),points:Number(x.POINTS||0),medal:String(x.MEDAL||'')};});
-}
-
-function savePoint(data) {
-  requireAdmin_();
-  var position=Number(data.position);
-  var points=Number(data.points);
-  var medal=String(data.medal||'').toUpperCase();
-  if(!position || position<1 || position>8) throw new Error('Kedudukan mesti 1 hingga 8.');
-  if(points<0) throw new Error('Mata tidak boleh negatif.');
-  var rows=getSheetObjects_(SHEETS.POINTS);
-  if(rows.some(function(x){return Number(x.POSITION)===position;})) updateObjectByKey_(SHEETS.POINTS,'POSITION',position,{POSITION:position,POINTS:points,MEDAL:medal});
-  else appendObject_(SHEETS.POINTS,{POSITION:position,POINTS:points,MEDAL:medal});
-  clearSystemCache_();
-  return {ok:true};
-}
-
-/* =========================
-   PARTICIPANTS
-   ========================= */
-
-function registerParticipants(data) {
-  const current = getCurrentUser_();
-
-  const year = Number(data.year || getActiveYear_());
-  const eventId = String(data.eventId || '');
-  const houseId = String(data.houseId || '');
-  const ids = Array.isArray(data.muridIds) ? data.muridIds : [];
-
-  if (current.role !== 'ADMIN' && String(current.houseId) !== houseId) {
-    throw new Error('Anda hanya boleh mendaftarkan peserta rumah sendiri.');
-  }
-
-  if (!eventId) throw new Error('Acara tidak dipilih.');
-  if (!houseId) throw new Error('Rumah sukan tidak ditetapkan.');
-  if (!ids.length) throw new Error('Tiada peserta dipilih.');
-
-  const existing = getSheetObjects_(SHEETS.PARTICIPANTS);
-
-  ids.forEach(function(id) {
-    const duplicate = existing.some(function(p) {
-      return Number(p.YEAR) === year &&
-             String(p.EVENT_ID) === eventId &&
-             String(p.MURID_ID) === String(id) &&
-             String(p.STATUS || 'ACTIVE') === 'ACTIVE';
-    });
-
-    if (!duplicate) {
-      appendObject_(SHEETS.PARTICIPANTS, {
-        YEAR: year,
-        EVENT_ID: eventId,
-        MURID_ID: id,
-        HOUSE_ID: houseId,
-        REGISTERED_AT: new Date(),
-        REGISTERED_BY: current.email,
-        STATUS: 'ACTIVE'
-      });
-    }
-  });
-
-  return {
-    ok: true,
-    count: ids.length
-  };
-}
-
-/* =========================
-   LANE DRAW
-   ========================= */
-
-function generateLanes(year, eventId) {
-  requireStaff_();
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  if (!eventId) throw new Error('Acara tidak dipilih.');
-
-  const participants = getSheetObjects_(SHEETS.PARTICIPANTS)
-    .filter(function(p) {
-      return Number(p.YEAR) === year &&
-             String(p.EVENT_ID) === eventId &&
-             String(p.STATUS || 'ACTIVE') === 'ACTIVE';
-    });
-
-  if (!participants.length) {
-    throw new Error('Tiada peserta berdaftar untuk acara ini.');
-  }
-
-  const houses = listHouses(year);
-
-  if (houses.length !== CONFIG.HOUSE_COUNT) {
-    throw new Error('Sistem memerlukan tepat 4 rumah sukan untuk undian 8 lorong.');
-  }
-
-  // Shuffle rumah dan agihkan slot 2 lorong setiap rumah.
-  const houseOrder = shuffle_(houses.slice());
-  const laneSlots = [];
-
-  houseOrder.forEach(function(h) {
-    laneSlots.push(h.id);
-    laneSlots.push(h.id);
-  });
-
-  // Shuffle peserta dalam setiap rumah.
-  const byHouse = {};
-  participants.forEach(function(p) {
-    if (!byHouse[p.HOUSE_ID]) byHouse[p.HOUSE_ID] = [];
-    byHouse[p.HOUSE_ID].push(p);
-  });
-
-  Object.keys(byHouse).forEach(function(k) {
-    byHouse[k] = shuffle_(byHouse[k]);
-  });
-
-  // Buat pasangan slot. Jika jumlah peserta kurang/lebih daripada 8,
-  // lorong akan diisi setakat peserta yang ada.
-  const assignments = [];
-  const used = {};
-
-  laneSlots.forEach(function(houseId, index) {
-    const list = byHouse[houseId] || [];
-    const participant = list.shift();
-
-    if (participant) {
-      assignments.push({
-        lane: index + 1,
-        houseId: houseId,
-        muridId: String(participant.MURID_ID)
-      });
-      used[String(participant.MURID_ID)] = true;
-    }
-  });
-
-  // Peserta lebihan: masukkan ke slot kosong secara rawak.
-  const remaining = participants.filter(function(p) {
-    return !used[String(p.MURID_ID)];
-  });
-
-  const emptyLanes = [];
-  for (let i = 1; i <= CONFIG.LANE_COUNT; i++) {
-    if (!assignments.some(function(a) { return a.lane === i; })) {
-      emptyLanes.push(i);
-    }
-  }
-
-  shuffle_(emptyLanes);
-
-  remaining.forEach(function(p, i) {
-    if (i < emptyLanes.length) {
-      assignments.push({
-        lane: emptyLanes[i],
-        houseId: String(p.HOUSE_ID),
-        muridId: String(p.MURID_ID)
-      });
-    }
-  });
-
-  assignments.sort(function(a, b) {
-    return a.lane - b.lane;
-  });
-
-  const current = getCurrentUser_();
-
-  // Padam undian lama untuk acara/tahun ini.
-  deleteRows_(SHEETS.LANES, function(r) {
-    return Number(r.YEAR) === year &&
-           String(r.EVENT_ID) === eventId;
-  });
-
-  assignments.forEach(function(a, index) {
-    appendObject_(SHEETS.LANES, {
-      YEAR: year,
-      EVENT_ID: eventId,
-      MURID_ID: a.muridId,
-      HOUSE_ID: a.houseId,
-      LANE: a.lane,
-      DRAW_NO: index + 1,
-      CREATED_AT: new Date(),
-      CREATED_BY: current.email
-    });
-  });
-
-  return assignments;
-}
-
-/* =========================
-   RESULTS
-   ========================= */
-
-function recordResult(data) {
-  requireStaff_();
-
-  const current = getCurrentUser_();
-
-  const year = Number(data.year || getActiveYear_());
-  const eventId = String(data.eventId || '');
-  const muridId = String(data.muridId || '');
-  const position = Number(data.position);
-
-  if (!eventId || !muridId || !position) {
-    throw new Error('Maklumat keputusan tidak lengkap.');
-  }
-
-  const participant = getSheetObjects_(SHEETS.PARTICIPANTS)
-    .find(function(p) {
-      return Number(p.YEAR) === year &&
-             String(p.EVENT_ID) === eventId &&
-             String(p.MURID_ID) === muridId &&
-             String(p.STATUS || 'ACTIVE') === 'ACTIVE';
-    });
-
-  if (!participant) {
-    throw new Error('Murid bukan peserta berdaftar untuk acara ini.');
-  }
-
-  const point = getSheetObjects_(SHEETS.POINTS)
-    .find(function(p) {
-      return Number(p.POSITION) === position;
-    });
-
-  const points = point ? Number(point.POINTS || 0) : 0;
-  const medal = point ? String(point.MEDAL || '') : '';
-
-  const resultId = Utilities.getUuid();
-
-  appendObject_(SHEETS.RESULTS, {
-    RESULT_ID: resultId,
-    YEAR: year,
-    EVENT_ID: eventId,
-    MURID_ID: muridId,
-    HOUSE_ID: participant.HOUSE_ID,
-    POSITION: position,
-    POINTS: points,
-    MEDAL: medal,
-    RECORDED_AT: new Date(),
-    RECORDED_BY: current.email
-  });
-
-  return {
-    ok: true,
-    points: points,
-    medal: medal
-  };
-}
-
-/* =========================
-   INDIVIDUAL RANKING
-   ========================= */
-
-function getIndividualRanking(year) {
-  year = Number(year || getActiveYear_());
-
-  const students = getSheetObjects_(SHEETS.STUDENTS);
-  const houses = listHouses(year);
-  const houseMap = {};
-
-  houses.forEach(function(h) {
-    houseMap[h.id] = h.name;
-  });
-
-  const results = getSheetObjects_(SHEETS.RESULTS)
-    .filter(function(r) {
-      return Number(r.YEAR) === year;
-    });
-
-  const map = {};
-
-  results.forEach(function(r) {
-    const id = String(r.MURID_ID);
-
-    if (!map[id]) {
-      map[id] = {
-        id: id,
-        points: 0,
-        gold: 0,
-        silver: 0,
-        bronze: 0
-      };
+    .brand {
+      padding:24px 20px 20px;
+      border-bottom:1px solid rgba(255,255,255,.1);
     }
 
-    map[id].points += Number(r.POINTS || 0);
-
-    if (String(r.MEDAL) === 'EMAS') map[id].gold++;
-    if (String(r.MEDAL) === 'PERAK') map[id].silver++;
-    if (String(r.MEDAL) === 'GANGSA') map[id].bronze++;
-  });
-
-  return Object.keys(map)
-    .map(function(id) {
-      const s = students.find(function(x) {
-        return String(x.MURID_ID) === id;
-      });
-
-      const x = map[id];
-
-      return {
-        id: id,
-        name: s ? String(s.NAME) : id,
-        grade: s ? String(s.GRADE || '') : '',
-        className: s ? String(s.CLASS_NAME || '') : '',
-        house: s ? (houseMap[String(s.HOUSE_ID)] || String(s.HOUSE_ID || '')) : '',
-        points: x.points,
-        gold: x.gold,
-        silver: x.silver,
-        bronze: x.bronze
-      };
-    })
-    .sort(function(a, b) {
-      return b.points - a.points ||
-             b.gold - a.gold ||
-             b.silver - a.silver ||
-             b.bronze - a.bronze ||
-             a.name.localeCompare(b.name);
-    });
-}
-
-/* =========================
-   PUBLIC LIVE SCORE
-   ========================= */
-
-function getPublicScore() {
-  return getDashboard();
-}
-
-/* =========================
-   PERMISSIONS
-   ========================= */
-
-function getCurrentUser_() {
-  const result = me(API_CONTEXT_EMAIL || '');
-
-  if (!result.ok) {
-    throw new Error(result.message);
-  }
-
-  return result.user;
-}
-
-function requireAdmin_() {
-  const user = getCurrentUser_();
-
-  if (String(user.role).toUpperCase() !== 'ADMIN') {
-    throw new Error('Akses Admin diperlukan.');
-  }
-
-  return user;
-}
-
-function requireStaff_() {
-  const user = getCurrentUser_();
-  const role = String(user.role).toUpperCase();
-
-  if (['ADMIN', 'GURU_RUMAH', 'URUS_SETIA'].indexOf(role) === -1) {
-    throw new Error('Akses tidak dibenarkan.');
-  }
-
-  return user;
-}
-
-/* =========================
-   SHEET HELPERS
-   ========================= */
-
-function getSheetObjects_(sheetName) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sh) throw new Error('Sheet "' + sheetName + '" belum wujud. Jalankan setupDatabase().');
-
-  const useCache = CACHEABLE_SHEETS.indexOf(sheetName) !== -1;
-  const cache = CacheService.getScriptCache();
-  const key = CACHE.PREFIX + 'SHEET_' + sheetName;
-
-  if (useCache) {
-    const cached = cache.get(key);
-    if (cached) {
-      try { return JSON.parse(cached); } catch (ignore) {}
-    }
-  }
-
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
-
-  const headers = values[0].map(function(h) { return String(h).trim(); });
-  const rows = values.slice(1).map(function(row) {
-    const obj = {};
-    headers.forEach(function(header, i) { obj[header] = row[i]; });
-    return obj;
-  });
-
-  if (useCache) {
-    try { cache.put(key, JSON.stringify(rows), CACHE.TTL); } catch (ignore) {}
-  }
-  return rows;
-}
-
-function clearSystemCache_() {
-  const cache = CacheService.getScriptCache();
-  CACHEABLE_SHEETS.forEach(function(name) {
-    cache.remove(CACHE.PREFIX + 'SHEET_' + name);
-  });
-  cache.remove(CACHE.PREFIX + 'DASHBOARD');
-}
-
-function getCachedDashboard_() {
-  const cache = CacheService.getScriptCache();
-  const key = CACHE.PREFIX + 'DASHBOARD';
-  const cached = cache.get(key);
-  if (cached) {
-    try { return JSON.parse(cached); } catch (ignore) {}
-  }
-  const data = buildDashboard_();
-  try { cache.put(key, JSON.stringify(data), CACHE.DASHBOARD_TTL); } catch (ignore) {}
-  return data;
-}
-
-function appendObject_(sheetName, obj) {
-
-  var ss =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  var sheet =
-    ss.getSheetByName(sheetName);
-
-  if (!sheet) {
-
-    throw new Error(
-      'Sheet tidak ditemui: ' +
-      sheetName
-    );
-
-  }
-
-
-  /*
-   * Pastikan sheet mempunyai header.
-   */
-  var lastColumn =
-    sheet.getLastColumn();
-
-  if (lastColumn < 1) {
-
-    throw new Error(
-      'Sheet ' +
-      sheetName +
-      ' belum mempunyai header.'
-    );
-
-  }
-
-
-  var headers =
-    sheet
-      .getRange(
-        1,
-        1,
-        1,
-        lastColumn
-      )
-      .getValues()[0];
-
-
-  if (!headers || !headers.length) {
-
-    throw new Error(
-      'Header sheet ' +
-      sheetName +
-      ' tidak dapat dibaca.'
-    );
-
-  }
-
-
-  /*
-   * Pastikan obj wujud.
-   */
-  if (!obj || typeof obj !== 'object') {
-
-    throw new Error(
-      'Data untuk ' +
-      sheetName +
-      ' tidak sah.'
-    );
-
-  }
-
-
-  /*
-   * Susun data berdasarkan
-   * nama header sheet.
-   *
-   * Ini penting supaya urutan
-   * column tidak perlu sama dengan
-   * urutan property JavaScript.
-   */
-  var row =
-    headers.map(function(header) {
-
-      var key =
-        String(header).trim();
-
-      if (
-        Object.prototype.hasOwnProperty
-          .call(obj, key)
-      ) {
-
-        return obj[key];
-
-      }
-
-      return '';
-
-    });
-
-
-  sheet.appendRow(row);
-
-
-  return {
-    ok: true
-  };
-
-}
-
-function updateObjectByKey_(sheetName, key, keyValue, obj, extraFilter) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(sheetName);
-
-  const values = sh.getDataRange().getValues();
-
-  if (values.length < 2) return;
-
-  const headers = values[0].map(function(h) {
-    return String(h).trim();
-  });
-
-  const keyIndex = headers.indexOf(key);
-
-  for (let r = 1; r < values.length; r++) {
-    const rowObj = {};
-    headers.forEach(function(h, c) {
-      rowObj[h] = values[r][c];
-    });
-
-    if (
-      String(values[r][keyIndex]) === String(keyValue) &&
-      (!extraFilter || extraFilter(rowObj))
-    ) {
-      const row = headers.map(function(h) {
-        return obj[h] !== undefined ? obj[h] : values[r][headers.indexOf(h)];
-      });
-
-      sh.getRange(r + 1, 1, 1, headers.length)
-        .setValues([row]);
-
-      return;
-    }
-  }
-}
-
-function deleteRows_(sheetName, predicate) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName(sheetName);
-
-  const values = sh.getDataRange().getValues();
-
-  if (values.length < 2) return;
-
-  const headers = values[0];
-
-  for (let r = values.length - 1; r >= 1; r--) {
-    const obj = {};
-    headers.forEach(function(h, c) {
-      obj[String(h)] = values[r][c];
-    });
-
-    if (predicate(obj)) {
-      sh.deleteRow(r + 1);
-    }
-  }
-}
-
-function toBool_(value) {
-  return value === true ||
-         String(value).toLowerCase() === 'true' ||
-         String(value) === '1' ||
-         String(value).toUpperCase() === 'YA';
-}
-
-function shuffle_(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const temp = array[i];
-    array[i] = array[j];
-    array[j] = temp;
-  }
-
-  return array;
-}
-
-/* =========================================================
-   FASA 3A
-   GURU RUMAH - MODUL PENDAFTARAN PESERTA
-   ========================================================= */
-
-/**
- * Maklumat awal untuk halaman Guru Rumah.
- */
-function getGuruRumahBootstrap() {
-  var user = getCurrentUser_();
-
-  if (!['ADMIN', 'GURU_RUMAH'].includes(String(user.role).toUpperCase())) {
-    throw new Error('Akses hanya untuk Admin atau Guru Rumah.');
-  }
-
-  var year = getActiveYear_();
-
-  return {
-    ok: true,
-    user: user,
-    year: year,
-    houses: listHouses(year),
-    events: listEvents(year)
-  };
-}
-
-
-/**
- * Dapatkan murid yang berada dalam rumah guru.
- *
- * Parameter:
- * year
- * eventId
- * houseId
- * query
- */
-function getGuruRumahStudents(year, eventId, houseId, query) {
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-  houseId = String(houseId || '');
-  query = String(query || '');
-
-  var user = getCurrentUser_();
-  var role = String(user.role).toUpperCase();
-
-  // Guru rumah hanya boleh mengurus rumah sendiri.
-  if (role === 'GURU_RUMAH' &&
-      String(user.houseId) !== houseId) {
-
-    throw new Error(
-      'Anda hanya boleh mengurus peserta rumah sukan sendiri.'
-    );
-  }
-
-  if (!eventId) {
-    throw new Error('Sila pilih acara.');
-  }
-
-  if (!houseId) {
-    throw new Error('Rumah sukan tidak ditetapkan.');
-  }
-
-  return listEligibleStudents(
-    year,
-    eventId,
-    houseId,
-    query
-  );
-}
-
-
-/**
- * Daftar peserta yang dipilih.
- */
-function daftarPesertaGuruRumah(data) {
-
-  if (!data) {
-    throw new Error('Data pendaftaran tidak diterima.');
-  }
-
-  var user = getCurrentUser_();
-
-  var role = String(user.role).toUpperCase();
-
-  if (!['ADMIN', 'GURU_RUMAH'].includes(role)) {
-    throw new Error('Akses tidak dibenarkan.');
-  }
-
-  var year = Number(
-    data.year || getActiveYear_()
-  );
-
-  var eventId = String(
-    data.eventId || ''
-  );
-
-  var houseId = String(
-    data.houseId || user.houseId || ''
-  );
-
-  var muridIds = Array.isArray(data.muridIds)
-    ? data.muridIds.map(String)
-    : [];
-
-  if (!eventId) {
-    throw new Error('Sila pilih acara.');
-  }
-
-  if (!houseId) {
-    throw new Error('Rumah sukan tidak ditetapkan.');
-  }
-
-  if (!muridIds.length) {
-    throw new Error(
-      'Sila pilih sekurang-kurangnya seorang murid.'
-    );
-  }
-
-  return registerParticipants({
-    year: year,
-    eventId: eventId,
-    houseId: houseId,
-    muridIds: muridIds
-  });
-}
-
-
-/**
- * Dapatkan jumlah peserta sesuatu acara
- * mengikut rumah.
- */
-function getEventHouseParticipantCount(year, eventId, houseId) {
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-  houseId = String(houseId || '');
-
-  var rows = getSheetObjects_(SHEETS.PARTICIPANTS);
-
-  return rows.filter(function(row) {
-
-    return Number(row.YEAR) === year &&
-      String(row.EVENT_ID) === eventId &&
-      String(row.HOUSE_ID) === houseId &&
-      String(row.STATUS || 'ACTIVE') === 'ACTIVE';
-
-  }).length;
-}
-/* =========================================================
-   MODUL SARINGAN TREK
-   ========================================================= */
-
-/**
- * Tentukan sama ada sesuatu acara ialah acara trek.
- *
- * EVENTS menggunakan medan LANЕ_EVENT.
- */
-function isTrackEvent_(eventId, year) {
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  var events = getSheetObjects_(SHEETS.EVENTS);
-
-  var event = events.find(function(e) {
-
-    return Number(e.YEAR) === year &&
-           String(e.EVENT_ID) === eventId &&
-           String(e.ACTIVE || 'TRUE').toUpperCase() !== 'FALSE';
-
-  });
-
-  if (!event) {
-    throw new Error('Acara tidak ditemui.');
-  }
-
-  return String(event.LANE_EVENT || '')
-    .toUpperCase() === 'TRUE';
-}
-
-
-/**
- * Dapatkan jumlah peserta aktif sesuatu acara.
- */
-function getTrackParticipantCount(year, eventId) {
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  var participants =
-    getSheetObjects_(SHEETS.PARTICIPANTS);
-
-  return participants.filter(function(p) {
-
-    return Number(p.YEAR) === year &&
-           String(p.EVENT_ID) === eventId &&
-           String(p.STATUS || 'ACTIVE')
-             .toUpperCase() === 'ACTIVE';
-
-  }).length;
-}
-
-
-/**
- * Dapatkan maklumat saringan sesuatu acara.
- */
-function getHeatInfo(year, eventId) {
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  if (!eventId) {
-    throw new Error('Acara tidak dipilih.');
-  }
-
-  var track =
-    isTrackEvent_(eventId, year);
-
-  var count =
-    getTrackParticipantCount(
-      year,
-      eventId
-    );
-
-  var required =
-    track && count > CONFIG.LANE_COUNT;
-
-  var heatCount =
-    required
-      ? Math.ceil(count / CONFIG.LANE_COUNT)
-      : 0;
-
-  return {
-    ok: true,
-    year: year,
-    eventId: eventId,
-    isTrackEvent: track,
-    participantCount: count,
-    laneCount: CONFIG.LANE_COUNT,
-    screeningRequired: required,
-    heatCount: heatCount,
-    finalSlots: CONFIG.LANE_COUNT
-  };
-}
-
-
-/**
- * Jana heat saringan.
- *
- * Jika peserta <= 8:
- * tiada saringan diperlukan.
- *
- * Jika peserta > 8:
- * peserta dibahagikan secara rawak dan seimbang
- * kepada beberapa heat.
- */
-function generateHeats(year, eventId) {
-
-  requireStaff_();
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  if (!eventId) {
-    throw new Error('Acara tidak dipilih.');
-  }
-
-  if (!isTrackEvent_(eventId, year)) {
-    throw new Error(
-      'Acara ini bukan acara trek.'
-    );
-  }
-
-  var participants =
-    getSheetObjects_(SHEETS.PARTICIPANTS)
-      .filter(function(p) {
-
-        return Number(p.YEAR) === year &&
-               String(p.EVENT_ID) === eventId &&
-               String(p.STATUS || 'ACTIVE')
-                 .toUpperCase() === 'ACTIVE';
-
-      });
-
-
-  if (!participants.length) {
-    throw new Error(
-      'Tiada peserta berdaftar untuk acara ini.'
-    );
-  }
-
-
-  if (participants.length <= CONFIG.LANE_COUNT) {
-
-    throw new Error(
-      'Acara ini mempunyai ' +
-      participants.length +
-      ' peserta sahaja. Saringan tidak diperlukan.'
-    );
-
-  }
-
-
-  var heatCount =
-    Math.ceil(
-      participants.length /
-      CONFIG.LANE_COUNT
-    );
-
-
-  /*
-   * Shuffle peserta supaya agihan
-   * tidak berat sebelah berdasarkan
-   * urutan pendaftaran.
-   */
-  participants =
-    shuffle_(participants);
-
-
-  /*
-   * Bahagikan peserta secara round-robin.
-   *
-   * Contoh 18 peserta / 3 heat:
-   *
-   * Heat 1 = 6
-   * Heat 2 = 6
-   * Heat 3 = 6
-   */
-  var heats = [];
-
-  for (
-    var h = 1;
-    h <= heatCount;
-    h++
-  ) {
-
-    heats.push([]);
-
-  }
-
-
-  participants.forEach(
-    function(participant, index) {
-
-      var heatIndex =
-        index % heatCount;
-
-      heats[heatIndex]
-        .push(participant);
-
-    }
-  );
-
-
-  /*
-   * Padam heat lama untuk
-   * acara dan tahun yang sama.
-   *
-   * Ini membolehkan admin
-   * jana semula jika perlu.
-   */
-  var existing =
-    getSheetObjects_(SHEETS.HEATS);
-
-  existing.forEach(function(row) {
-
-    if (
-      Number(row.YEAR) === year &&
-      String(row.EVENT_ID) === eventId
-    ) {
-
-      deleteRowByObject_(
-        SHEETS.HEATS,
-        row
-      );
-
+    .brand-mark {
+      width:48px;
+      height:48px;
+      border-radius:13px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(214,168,79,.16);
+      border:1px solid rgba(214,168,79,.45);
+      font-size:24px;
+      margin-bottom:12px;
     }
 
-  });
+    .brand-title { font-weight:800; line-height:1.25; font-size:16px; }
+    .brand-sub { color:rgba(255,255,255,.62); font-size:12px; margin-top:5px; }
 
+    .nav { padding:18px 12px; overflow:auto; flex:1; }
 
-  var current =
-    getCurrentUser_();
-
-  var output = [];
-
-
-  heats.forEach(
-    function(heatParticipants, heatIndex) {
-
-      var heatNo =
-        heatIndex + 1;
-
-
-      /*
-       * Shuffle sekali lagi
-       * sebelum beri lorong.
-       */
-      heatParticipants =
-        shuffle_(
-          heatParticipants
-        );
-
-
-      heatParticipants.forEach(
-        function(participant, laneIndex) {
-
-          var lane =
-            laneIndex + 1;
-
-
-          var row = {
-
-            YEAR: year,
-
-            EVENT_ID: eventId,
-
-            HEAT_NO: heatNo,
-
-            MURID_ID:
-              String(participant.MURID_ID),
-
-            HOUSE_ID:
-              String(participant.HOUSE_ID),
-
-            LANE: lane,
-
-            POSITION: '',
-
-            TIME: '',
-
-            QUALIFIED: '',
-
-            STATUS: 'ACTIVE',
-
-            CREATED_AT:
-              new Date(),
-
-            CREATED_BY:
-              current.email
-
-          };
-
-
-          appendObject_(
-            SHEETS.HEATS,
-            row
-          );
-
-
-          output.push({
-            year: year,
-            eventId: eventId,
-            heatNo: heatNo,
-            muridId:
-              String(participant.MURID_ID),
-            houseId:
-              String(participant.HOUSE_ID),
-            lane: lane,
-            position: '',
-            time: '',
-            qualified: '',
-            status: 'ACTIVE'
-          });
-
-        }
-      );
-
+    .nav-label {
+      color:rgba(255,255,255,.38);
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:1.2px;
+      padding:10px 12px 7px;
+      font-weight:800;
     }
-  );
+
+    .nav button {
+      width:100%;
+      border:0;
+      background:transparent;
+      color:rgba(255,255,255,.76);
+      padding:12px 13px;
+      margin:2px 0;
+      border-radius:10px;
+      text-align:left;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:11px;
+    }
+
+    .nav button:hover,.nav button.active {
+      background:rgba(255,255,255,.10);
+      color:#fff;
+    }
+
+    .nav button.active { box-shadow:inset 3px 0 0 var(--gold); }
+    .nav-icon { width:22px; text-align:center; font-size:17px; }
+
+    .sidebar-footer {
+      padding:14px 16px;
+      border-top:1px solid rgba(255,255,255,.1);
+      font-size:11px;
+      color:rgba(255,255,255,.48);
+    }
+
+    .main { margin-left:255px; width:calc(100% - 255px); min-height:100vh; }
+
+    .topbar {
+      height:72px;
+      background:#fff;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 28px;
+      position:sticky;
+      top:0;
+      z-index:10;
+    }
+
+    .page-title { font-size:20px; font-weight:800; }
+    .page-sub { color:var(--muted); font-size:12px; margin-top:3px; }
+
+    .profile { display:flex; align-items:center; gap:10px; }
+    .avatar {
+      width:38px;
+      height:38px;
+      border-radius:50%;
+      background:var(--navy);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:800;
+    }
+
+    .profile-name { font-size:13px; font-weight:700; }
+    .profile-role { font-size:11px; color:var(--muted); }
+
+    .content { padding:26px; max-width:1450px; margin:auto; }
+    .section { display:none; }
+    .section.active { display:block; }
+
+    .welcome {
+      background:linear-gradient(135deg,var(--navy),var(--navy2));
+      color:#fff;
+      border-radius:20px;
+      padding:25px;
+      box-shadow:var(--shadow);
+      margin-bottom:20px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .welcome:after {
+      content:"🏆";
+      position:absolute;
+      right:25px;
+      top:10px;
+      font-size:90px;
+      opacity:.08;
+    }
+
+    .welcome h2 { margin:0 0 6px; font-size:24px; }
+    .welcome p { margin:0; color:rgba(255,255,255,.68); font-size:13px; }
+
+    .stats {
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:15px;
+      margin-bottom:20px;
+    }
+
+    .stat,.card {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:var(--shadow);
+    }
+
+    .stat { padding:19px; }
+
+    .stat-top {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:700;
+    }
+
+    .stat-icon {
+      width:38px;
+      height:38px;
+      border-radius:11px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#eef3f8;
+      font-size:19px;
+    }
+
+    .stat-value { font-size:29px; font-weight:900; margin-top:13px; }
+    .stat-note { color:var(--muted); font-size:11px; margin-top:4px; }
+
+    .grid-2 { display:grid; grid-template-columns:1.3fr .7fr; gap:20px; }
+    .card { padding:20px; }
+
+    .card-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:16px;
+    }
+
+    .card-title { font-size:16px; font-weight:800; }
+    .card-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+
+    .houses { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+
+    .house {
+      border:1px solid var(--border);
+      border-radius:13px;
+      padding:16px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .house-bar { position:absolute; left:0; top:0; bottom:0; width:5px; }
+    .house-rank { color:var(--muted); font-size:11px; font-weight:800; }
+    .house-name { font-size:17px; font-weight:900; margin-top:6px; }
+    .house-points { font-size:27px; font-weight:900; margin-top:8px; }
+    .medals { font-size:12px; color:var(--muted); margin-top:6px; }
+
+    .table-wrap { overflow:auto; border:1px solid var(--border); border-radius:12px; }
+
+    table { width:100%; border-collapse:collapse; min-width:650px; }
+    th,td { padding:12px 14px; border-bottom:1px solid var(--border); text-align:left; font-size:12px; }
+    th {
+      background:#f7f9fc;
+      color:#536170;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.6px;
+    }
+
+    tr:last-child td { border-bottom:0; }
 
 
-  return {
+    .admin-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+    .admin-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:18px}
+    .admin-tab{border:1px solid var(--border);background:#fff;padding:9px 13px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:800;color:#536170}
+    .admin-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .admin-panel{display:none}
+    .admin-panel.active{display:block}
+    .admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+    .mini-stat{border:1px solid var(--border);border-radius:12px;padding:13px;background:#fbfcfe}
+    .mini-stat b{display:block;font-size:20px;margin-top:4px}
+    .inline-form{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end}
+    .inline-form .wide{grid-column:span 2}
+    .admin-table td .btn{padding:7px 9px;font-size:11px}
+    .danger{background:#fff0f0!important;color:#b42318!important;border-color:#f3c1c1!important}
+    .success{background:#eefaf4!important;color:#147a4b!important;border-color:#bde6d0!important}
+    .muted-box{background:#f7f9fc;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);font-size:12px}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:center;justify-content:center;z-index:100;padding:18px}
+    .modal-backdrop.show{display:flex}
+    .modal{background:#fff;border-radius:16px;width:min(760px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+    .modal-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .modal-body{padding:20px}
+    .modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+    .close-btn{border:0;background:#f2f4f7;width:34px;height:34px;border-radius:9px;cursor:pointer}
+    @media(max-width:900px){.mini-grid{grid-template-columns:repeat(2,1fr)}.inline-form{grid-template-columns:1fr 1fr}.inline-form .wide{grid-column:span 2}}
+    @media(max-width:700px){.mini-grid{grid-template-columns:1fr 1fr}.inline-form{grid-template-columns:1fr}.inline-form .wide{grid-column:span 1}}
 
-    ok: true,
+    .form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
 
-    year: year,
+    .field label {
+      display:block;
+      font-size:11px;
+      font-weight:800;
+      margin-bottom:6px;
+      color:#4d5966;
+    }
 
-    eventId: eventId,
+    .field input,.field select {
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:9px;
+      padding:11px 12px;
+      outline:none;
+      background:#fff;
+    }
 
-    participantCount:
-      participants.length,
+    .field input:focus,.field select:focus {
+      border-color:var(--navy2);
+      box-shadow:0 0 0 3px rgba(23,63,99,.08);
+    }
 
-    heatCount:
-      heatCount,
+    .btn {
+      border:0;
+      border-radius:9px;
+      padding:10px 14px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:12px;
+    }
 
-    heats:
-      output
+    .btn-primary { background:var(--navy); color:#fff; }
+    .btn-gold { background:var(--gold); color:#1c2630; }
+    .btn-light { background:#eef2f6; color:#273442; }
 
-  };
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
 
-}
+    .message {
+      display:none;
+      padding:11px 13px;
+      border-radius:9px;
+      margin-top:13px;
+      font-size:12px;
+    }
 
+    .message.ok { display:block; background:#e8f6ef; color:#14613f; }
+    .message.err { display:block; background:#fdecec; color:#8d2626; }
 
-/**
- * Paparkan heat yang telah dijana.
- */
-function listHeats(year, eventId) {
+    .student-list {
+      max-height:450px;
+      overflow:auto;
+      border:1px solid var(--border);
+      border-radius:11px;
+    }
 
-  requireStaff_();
+    .student {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:12px;
+      border-bottom:1px solid var(--border);
+    }
 
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
+    .student:last-child { border-bottom:0; }
+    .student input { width:17px; height:17px; }
+    .student-name { font-weight:700; font-size:12px; }
+    .student-meta { font-size:10px; color:var(--muted); margin-top:3px; }
 
-  return getSheetObjects_(SHEETS.HEATS)
-    .filter(function(row) {
+    .badge {
+      display:inline-flex;
+      align-items:center;
+      padding:4px 8px;
+      border-radius:99px;
+      font-size:10px;
+      font-weight:800;
+      background:#eef2f6;
+      color:#536170;
+    }
 
-      return Number(row.YEAR) === year &&
-             String(row.EVENT_ID) === eventId &&
-             String(row.STATUS || 'ACTIVE')
-               .toUpperCase() === 'ACTIVE';
+    .empty { padding:35px; text-align:center; color:var(--muted); font-size:12px; }
 
-    })
-    .map(function(row) {
-
-      return {
-
-        year:
-          Number(row.YEAR),
-
-        eventId:
-          String(row.EVENT_ID),
-
-        heatNo:
-          Number(row.HEAT_NO),
-
-        muridId:
-          String(row.MURID_ID),
-
-        houseId:
-          String(row.HOUSE_ID),
-
-        lane:
-          Number(row.LANE),
-
-        position:
-          row.POSITION || '',
-
-        time:
-          row.TIME || '',
-
-        qualified:
-          row.QUALIFIED || '',
-
-        status:
-          row.STATUS || 'ACTIVE'
-
-      };
-
-    });
-
-}
-
-
-/**
- * Simpan keputusan saringan.
- *
- * data.rows:
- *
- * [
- *   {
- *     muridId: 'M001',
- *     heatNo: 1,
- *     position: 1,
- *     time: '15.23'
- *   }
- * ]
- */
-function saveHeatResults(data) {
-
-  requireStaff_();
-
-  if (!data) {
-    throw new Error(
-      'Data keputusan tidak diterima.'
-    );
-  }
-
-  var year =
-    Number(
-      data.year || getActiveYear_()
-    );
-
-  var eventId =
-    String(
-      data.eventId || ''
-    );
-
-  var rows =
-    Array.isArray(data.rows)
-      ? data.rows
-      : [];
-
-
-  if (!eventId) {
-    throw new Error(
-      'Acara tidak dipilih.'
-    );
-  }
-
-  if (!rows.length) {
-    throw new Error(
-      'Tiada keputusan untuk disimpan.'
-    );
-  }
-
-
-  var heatRows =
-    getSheetObjects_(SHEETS.HEATS);
-
-
-  rows.forEach(function(item) {
-
-    var muridId =
-      String(item.muridId || '');
-
-    var heatNo =
-      Number(item.heatNo || 0);
-
-
-    var match =
-      heatRows.find(function(row) {
-
-        return Number(row.YEAR) === year &&
-               String(row.EVENT_ID) === eventId &&
-               Number(row.HEAT_NO) === heatNo &&
-               String(row.MURID_ID) === muridId &&
-               String(row.STATUS || 'ACTIVE')
-                 .toUpperCase() === 'ACTIVE';
-
-      });
-
-
-    if (!match) {
-      return;
+    .mobile-toggle {
+      display:none;
+      border:0;
+      background:#eef2f6;
+      border-radius:9px;
+      width:40px;
+      height:40px;
+      cursor:pointer;
     }
 
 
-    updateObject_(
-      SHEETS.HEATS,
-      match,
-      {
+    /* =========================
+       SARINGAN TREK — FASA 3B
+       ========================= */
+    .screening-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:14px 0; }
+    .screening-stat { border:1px solid var(--border); border-radius:11px; padding:14px; background:#fbfcfe; }
+    .screening-stat span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .screening-stat strong { display:block; font-size:24px; margin-top:5px; }
+    .screening-heat { margin-top:14px; }
+    .screening-time { width:100px !important; min-width:90px; padding:8px 9px !important; }
+    .screening-final { background:#f4fbf7; }
 
-        POSITION:
-          item.position !== undefined
-            ? item.position
-            : match.POSITION,
+    @media(max-width:1050px) {
+      .stats { grid-template-columns:repeat(2,1fr); }
+      .grid-2 { grid-template-columns:1fr; }
+    }
 
-        TIME:
-          item.time !== undefined
-            ? item.time
-            : match.TIME
+    @media(max-width:760px) {
+      .sidebar { transform:translateX(-100%); transition:.2s; }
+      .sidebar.open { transform:translateX(0); }
+      .main { margin-left:0; width:100%; }
+      .mobile-toggle { display:block; }
+      .topbar { padding:0 16px; }
+      .content { padding:16px; }
+      .stats { grid-template-columns:1fr 1fr; gap:10px; }
+      .form-grid { grid-template-columns:1fr; }
+      .houses { grid-template-columns:1fr; }
+      .profile > div:not(.avatar) { display:none; }
+    }
 
-      }
-    );
+    @media(max-width:450px) {
+      .stats { grid-template-columns:1fr; }
+      .welcome h2 { font-size:20px; }
+    }
+  </style>
+</head>
 
-  });
+<body>
+<div class="app">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">🏆</div>
+      <div class="brand-title">
+        SISTEM SUKAN<br>
+        SK AGAMA (MIS) MIRI
+      </div>
+      <div class="brand-sub">Pengurusan Sukan Tahunan</div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Utama</div>
+
+      <button class="active" onclick="showSection('dashboard', this)">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+
+      <button onclick="showSection('registration', this)">
+        <span class="nav-icon">👥</span> Daftar Peserta
+      </button>
+
+      <button onclick="showSection('screening', this)">
+        <span class="nav-icon">🏃</span> Saringan Trek
+      </button>
+
+      <button onclick="showSection('lanes', this)">
+        <span class="nav-icon">🎲</span> Undian Lorong
+      </button>
+
+      <button onclick="showSection('results', this)">
+        <span class="nav-icon">🏅</span> Keputusan
+      </button>
+
+      <div class="nav-label">Ranking</div>
+
+      <button onclick="showSection('individual', this)">
+        <span class="nav-icon">🏆</span> Peserta Terbaik
+      </button>
+
+      <button onclick="showSection('house-ranking', this)">
+        <span class="nav-icon">📈</span> Ranking Rumah
+      </button>
+
+      <div class="nav-label">Pentadbiran</div>
+
+      <button onclick="showSection('admin', this)">
+        <span class="nav-icon">⚙️</span> Admin
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      SK Agama (MIS) Miri<br>
+      Sistem Mata Sukan
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
+
+        <div>
+          <div class="page-title" id="pageTitle">Dashboard</div>
+          <div class="page-sub" id="pageSub">
+            Ringkasan keseluruhan kejohanan
+          </div>
+        </div>
+      </div>
+
+      <div class="profile">
+        <div>
+          <div class="profile-name" id="profileName">Memuatkan...</div>
+          <div class="profile-role" id="profileRole">-</div>
+        </div>
+        <div class="avatar" id="avatar">?</div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <section class="section active" id="dashboard">
+        <div class="welcome">
+          <h2>Selamat datang ke Sistem Sukan 🏆</h2>
+          <p id="welcomeText">
+            Sistem pengurusan mata sukan SK Agama (MIS) Miri.
+          </p>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-top">
+              <span>TAHUN AKTIF</span>
+              <div class="stat-icon">📅</div>
+            </div>
+            <div class="stat-value" id="statYear">-</div>
+            <div class="stat-note">Tahun kejohanan</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>RUMAH SUKAN</span>
+              <div class="stat-icon">🏠</div>
+            </div>
+            <div class="stat-value" id="statHouses">4</div>
+            <div class="stat-note">Rumah aktif</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>ACARA</span>
+              <div class="stat-icon">🏃</div>
+            </div>
+            <div class="stat-value" id="statEvents">-</div>
+            <div class="stat-note">Acara aktif</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-top">
+              <span>STATUS</span>
+              <div class="stat-icon">🟢</div>
+            </div>
+            <div class="stat-value" style="font-size:20px">AKTIF</div>
+            <div class="stat-note">Sistem sedang berjalan</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Kedudukan Rumah Sukan</div>
+                <div class="card-sub">Mata terkini mengikut rumah</div>
+              </div>
+              <button class="btn btn-light" onclick="loadDashboard()">↻ Segar</button>
+            </div>
+
+            <div class="houses" id="houseCards">
+              <div class="empty">Memuatkan kedudukan...</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Ringkasan</div>
+                <div class="card-sub">Sistem mata sukan</div>
+              </div>
+            </div>
+
+            <div id="summary">
+              <div class="empty">Memuatkan...</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="section" id="registration">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">👥 Pendaftaran Peserta</div>
+              <div class="card-sub">
+                Guru rumah memilih murid yang telah dimasukkan oleh Admin.
+              </div>
+            </div>
+            <div style="min-width:220px">
+  <select id="registrationHouse"
+          onchange="loadStudents()"
+          style="margin:0">
+    <option value="">Memuatkan rumah...</option>
+  </select>
+</div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA</label>
+              <select id="eventSelect" onchange="loadStudents()">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>CARI MURID</label>
+              <input id="studentSearch"
+                     placeholder="Taip nama atau kelas..."
+                     oninput="loadStudents()">
+            </div>
+          </div>
+
+          <div style="margin:12px 0;font-size:12px;color:#6b7785">
+            Pilih peserta:
+          </div>
+
+          <div class="student-list" id="studentList">
+            <div class="empty">Pilih acara terlebih dahulu.</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary"
+                    onclick="registerParticipants()">
+              ✓ Daftarkan Peserta
+            </button>
+
+            <button class="btn btn-light"
+                    onclick="loadStudents()">
+              ↻ Segar
+            </button>
+          </div>
+
+          <div id="registrationMessage" class="message"></div>
+        </div>
+      </section>
+
+      <section class="section" id="screening">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏃 Saringan Trek</div>
+              <div class="card-sub">Acara trek yang mempunyai lebih daripada 8 peserta perlu melalui saringan.</div>
+            </div>
+            <span class="badge" id="screeningStatus">Pilih acara</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA TREK</label>
+              <select id="screeningEvent" onchange="loadScreeningEvent()">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="screeningInfo"></div>
+          <div class="actions" id="screeningActions"></div>
+        </div>
+
+        <div id="screeningHeats"></div>
+      </section>
+
+      <section class="section" id="lanes">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🎲 Undian Lorong</div>
+              <div class="card-sub">
+                8 lorong • 2 lorong setiap rumah
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>ACARA</label>
+              <select id="laneEvent">
+                <option value="">Memuatkan acara...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-gold"
+                    onclick="generateLanes()">
+              🎲 Jana Undian Lorong
+            </button>
+          </div>
+
+          <div id="laneResult" style="margin-top:20px"></div>
+        </div>
+      </section>
+
+      <section class="section" id="results">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏅 Keputusan Acara</div>
+              <div class="card-sub">
+                Modul keputusan akan disambungkan selepas modul pendaftaran dan lorong diuji.
+              </div>
+            </div>
+          </div>
+
+          <div class="empty">
+            Modul keputusan — Fasa seterusnya.
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="individual">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏆 Peserta Terbaik Keseluruhan</div>
+              <div class="card-sub">
+                Ranking berdasarkan jumlah mata individu.
+              </div>
+            </div>
+
+            <button class="btn btn-light"
+                    onclick="loadIndividualRanking()">
+              ↻ Segar
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nama</th>
+                  <th>Darjah</th>
+                  <th>Rumah</th>
+                  <th>Mata</th>
+                  <th>🥇</th>
+                  <th>🥈</th>
+                  <th>🥉</th>
+                </tr>
+              </thead>
+              <tbody id="individualTable">
+                <tr>
+                  <td colspan="8" class="empty">Memuatkan ranking...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="house-ranking">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📈 Ranking Rumah Sukan</div>
+              <div class="card-sub">
+                Kedudukan berdasarkan mata terkumpul.
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kedudukan</th>
+                  <th>Rumah</th>
+                  <th>Mata</th>
+                  <th>🥇</th>
+                  <th>🥈</th>
+                  <th>🥉</th>
+                </tr>
+              </thead>
+              <tbody id="houseTable">
+                <tr>
+                  <td colspan="6" class="empty">Memuatkan...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="admin">
+        <div class="card">
+          <div class="admin-toolbar">
+            <div>
+              <div class="card-title">⚙️ Pusat Pentadbiran</div>
+              <div class="card-sub">Semua data asas kejohanan diurus dari sini.</div>
+            </div>
+            <div class="admin-actions">
+              <span class="badge" id="adminActiveYear">Tahun: -</span>
+              <button class="btn btn-light" onclick="loadAdminAll()">↻ Segar</button>
+            </div>
+          </div>
+
+          <div class="admin-tabs">
+            <button class="admin-tab active" onclick="showAdminTab('years',this)">📅 Tahun</button>
+            <button class="admin-tab" onclick="showAdminTab('houses',this)">🏠 Rumah</button>
+            <button class="admin-tab" onclick="showAdminTab('students',this)">👥 Murid</button>
+            <button class="admin-tab" onclick="showAdminTab('events',this)">🏃 Acara</button>
+            <button class="admin-tab" onclick="showAdminTab('users',this)">👨‍🏫 Guru/Pengguna</button>
+            <button class="admin-tab" onclick="showAdminTab('points',this)">🎯 Mata</button>
+          </div>
+
+          <div class="admin-panel active" id="admin-years">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📅 Tahun Kejohanan</div>
+                <div class="card-sub">Setiap tahun mempunyai rumah dan rekod tersendiri.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openYearModal()">+ Tambah Tahun</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Tahun</th><th>Nama Kejohanan</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminYearsTable"><tr><td colspan="4" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-houses">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🏠 Rumah Sukan</div>
+                <div class="card-sub">Nama rumah boleh berubah mengikut tahun tanpa merosakkan rekod lama.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openHouseModal()">+ Tambah Rumah</button>
+            </div>
+            <div class="muted-box" style="margin-bottom:14px">
+              Sistem trek memerlukan <strong>4 rumah aktif</strong>. Setiap rumah akan mendapat 2 lorong dalam modul undian.
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Nama Rumah</th><th>Tahun</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminHousesTable"><tr><td colspan="5" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-students">
+            <div class="card-header">
+              <div>
+                <div class="card-title">👥 Data Murid</div>
+                <div class="card-sub">Admin memasukkan murid sekali; guru rumah hanya memilih peserta.</div>
+              </div>
+              <div class="admin-actions">
+                <button class="btn btn-light" onclick="downloadStudentTemplate()">⬇ Template CSV</button>
+                <button class="btn btn-light" onclick="document.getElementById('studentCsv').click()">📥 Import CSV</button>
+                <button class="btn btn-primary" onclick="openStudentModal()">+ Tambah Murid</button>
+                <input type="file" id="studentCsv" accept=".csv,text/csv" style="display:none" onchange="importStudentCsv(this)">
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>CARI</label><input id="adminStudentSearch" placeholder="Nama / ID / kelas / darjah..." oninput="loadAdminStudents()"></div>
+              <div class="field"><label>TAHUN</label><select id="adminStudentYear" onchange="loadAdminStudents()"></select></div>
+            </div>
+            <div id="studentImportMsg" class="message"></div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Nama</th><th>Darjah</th><th>Kelas</th><th>Jantina</th><th>Rumah</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminStudentsTable"><tr><td colspan="7" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-events">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🏃 Pengurusan Acara</div>
+                <div class="card-sub">Tambah, ubah atau nyahaktifkan acara.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openEventModal()">+ Tambah Acara</button>
+            </div>
+            <div class="field" style="max-width:260px;margin-bottom:14px">
+              <label>TAHUN</label><select id="adminEventYear" onchange="loadAdminEvents()"></select>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Acara</th><th>Kategori</th><th>Jantina</th><th>Darjah</th><th>Lorong</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminEventsTable"><tr><td colspan="6" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-users">
+            <div class="card-header">
+              <div>
+                <div class="card-title">👨‍🏫 Guru Rumah / Pengguna</div>
+                <div class="card-sub">Tetapkan akaun Google kepada peranan dan rumah.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Pengguna</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Nama</th><th>Email</th><th>Peranan</th><th>Rumah</th><th>Status</th><th>Tindakan</th></tr></thead>
+                <tbody id="adminUsersTable"><tr><td colspan="6" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="admin-panel" id="admin-points">
+            <div class="card-header">
+              <div>
+                <div class="card-title">🎯 Tetapan Mata</div>
+                <div class="card-sub">Ubah mata kedudukan 1 hingga 8 tanpa mengubah kod sistem.</div>
+              </div>
+              <button class="btn btn-primary" onclick="saveAllPoints()">💾 Simpan Semua</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Kedudukan</th><th>Mata</th><th>Pingat</th></tr></thead>
+                <tbody id="adminPointsTable"><tr><td colspan="3" class="empty">Memuatkan...</td></tr></tbody>
+              </table>
+            </div>
+            <div id="pointsMsg" class="message"></div>
+          </div>
+
+          <div id="adminMsg" class="message"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
 
 
-  return {
-    ok: true,
-    message:
-      'Keputusan saringan berjaya disimpan.'
-  };
+<div class="modal-backdrop" id="adminModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="card-title" id="modalTitle">Borang</div>
+      <button class="close-btn" onclick="closeAdminModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-light" onclick="closeAdminModal()">Batal</button>
+      <button class="btn btn-primary" id="modalSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
 
-}
+<script>
 
+  /* =========================
+     GITHUB <-> APPS SCRIPT API BRIDGE
+     FASA 2C: satu API + cache di backend
+     ========================= */
+  const API_URL = "https://script.google.com/macros/s/AKfycbyOPXhpCG9HxxZ9mL51R139Ke3pWsZiTFJPI6_-GGY6VBQvsOFe7XJixv8_97Fw5fYn/exec";
+  let API_EMAIL = "";
+  let apiSeq = 0;
 
-/**
- * Tentukan 8 peserta terbaik
- * berdasarkan masa.
- *
- * Hanya peserta yang mempunyai
- * masa sah akan dipertimbangkan.
- */
-function qualifyTop8ByTime(year, eventId) {
-
-  requireStaff_();
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-
-  var rows =
-    getSheetObjects_(SHEETS.HEATS)
-      .filter(function(row) {
-
-        return Number(row.YEAR) === year &&
-               String(row.EVENT_ID) === eventId &&
-               String(row.STATUS || 'ACTIVE')
-                 .toUpperCase() === 'ACTIVE';
-
-      });
-
-
-  if (!rows.length) {
-    throw new Error(
-      'Tiada data saringan.'
-    );
+  function encodeApiArgs(args) {
+    const text = JSON.stringify(args || []);
+    return btoa(unescape(encodeURIComponent(text)))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
 
+  function apiRequest(action, args, success, failure) {
 
-  /*
-   * Hanya masa yang sah.
-   *
-   * Format contoh:
-   * 15.23
-   * 12.85
-   */
-  var valid =
-    rows.filter(function(row) {
-
-      var time =
-        parseFloat(
-          String(row.TIME)
-            .replace(',', '.')
-        );
-
-      return !isNaN(time) &&
-             time > 0;
-
-    });
-
-
-  if (!valid.length) {
-
-    throw new Error(
-      'Tiada masa saringan yang sah.'
+  if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+    (failure || function(){})(
+      new Error('API_URL belum ditetapkan dalam Index.html.')
     );
-
-  }
-
-
-  /*
-   * Masa terpantas = nombor paling kecil.
-   */
-  valid.sort(function(a, b) {
-
-    return parseFloat(
-      String(a.TIME).replace(',', '.')
-    ) -
-    parseFloat(
-      String(b.TIME).replace(',', '.')
-    );
-
-  });
-
-
-  /*
-   * Ambil maksimum 8.
-   */
-  var qualified =
-    valid.slice(
-      0,
-      CONFIG.LANE_COUNT
-    );
-
-
-  /*
-   * Reset status kelayakan dahulu.
-   */
-  rows.forEach(function(row) {
-
-    updateObject_(
-      SHEETS.HEATS,
-      row,
-      {
-        QUALIFIED: 'NO'
-      }
-    );
-
-  });
-
-
-  /*
-   * Tandakan 8 terbaik.
-   */
-  qualified.forEach(function(row) {
-
-    updateObject_(
-      SHEETS.HEATS,
-      row,
-      {
-        QUALIFIED: 'YES'
-      }
-    );
-
-  });
-
-
-  return {
-
-    ok: true,
-
-    year: year,
-
-    eventId: eventId,
-
-    qualifiedCount:
-      qualified.length,
-
-    participants:
-      qualified.map(function(row) {
-
-        return {
-
-          muridId:
-            String(row.MURID_ID),
-
-          houseId:
-            String(row.HOUSE_ID),
-
-          heatNo:
-            Number(row.HEAT_NO),
-
-          lane:
-            Number(row.LANE),
-
-          time:
-            row.TIME,
-
-          qualified:
-            'YES'
-
-        };
-
-      })
-
-  };
-
-}
-
-
-/**
- * Dapatkan peserta yang layak
- * ke final.
- */
-function getQualifiedFinalists(
-  year,
-  eventId
-) {
-
-  requireStaff_();
-
-  year =
-    Number(
-      year || getActiveYear_()
-    );
-
-  eventId =
-    String(eventId || '');
-
-
-  return getSheetObjects_(SHEETS.HEATS)
-    .filter(function(row) {
-
-      return Number(row.YEAR) === year &&
-             String(row.EVENT_ID) === eventId &&
-             String(row.QUALIFIED)
-               .toUpperCase() === 'YES' &&
-             String(row.STATUS || 'ACTIVE')
-               .toUpperCase() === 'ACTIVE';
-
-    })
-    .sort(function(a, b) {
-
-      return parseFloat(
-        String(a.TIME)
-          .replace(',', '.')
-      ) -
-      parseFloat(
-        String(b.TIME)
-          .replace(',', '.')
-      );
-
-    })
-    .slice(
-      0,
-      CONFIG.LANE_COUNT
-    )
-    .map(function(row) {
-
-      return {
-
-        muridId:
-          String(row.MURID_ID),
-
-        houseId:
-          String(row.HOUSE_ID),
-
-        heatNo:
-          Number(row.HEAT_NO),
-
-        lane:
-          Number(row.LANE),
-
-        time:
-          row.TIME,
-
-        qualified:
-          'YES'
-
-      };
-
-    });
-
-}
-function deleteRowByObject_(sheetName, obj) {
-
-  var ss =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  var sheet =
-    ss.getSheetByName(sheetName);
-
-  if (!sheet) {
-    throw new Error(
-      'Sheet tidak ditemui: ' +
-      sheetName
-    );
-  }
-
-  var values =
-    sheet.getDataRange().getValues();
-
-  if (values.length < 2) {
     return;
   }
 
-  var headers =
-    values[0];
-
-  var keys =
-    Object.keys(obj);
-
-
-  for (
-    var r = 1;
-    r < values.length;
-    r++
-  ) {
-
-    var match = true;
-
-    keys.forEach(function(key) {
-
-      var col =
-        headers.indexOf(key);
-
-      if (col === -1) {
-        return;
-      }
-
-      if (
-        String(values[r][col]) !==
-        String(obj[key])
-      ) {
-        match = false;
-      }
-
-    });
-
-
-    if (match) {
-
-      sheet.deleteRow(
-        r + 1
-      );
-
-      return;
-
-    }
-
-  }
-
-}
-
-
-function updateObject_(
-  sheetName,
-  oldObj,
-  changes
-) {
-
-  var ss =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  var sheet =
-    ss.getSheetByName(sheetName);
-
-  if (!sheet) {
-    throw new Error(
-      'Sheet tidak ditemui: ' +
-      sheetName
-    );
-  }
-
-  var values =
-    sheet.getDataRange().getValues();
-
-  if (values.length < 2) {
-    throw new Error(
-      'Sheet tiada data.'
-    );
-  }
-
-  var headers =
-    values[0];
-
-  var keys =
-    Object.keys(oldObj);
-
-
-  for (
-    var r = 1;
-    r < values.length;
-    r++
-  ) {
-
-    var match = true;
-
-    keys.forEach(function(key) {
-
-      var col =
-        headers.indexOf(key);
-
-      if (col === -1) {
-        return;
-      }
-
-      if (
-        String(values[r][col]) !==
-        String(oldObj[key])
-      ) {
-        match = false;
-      }
-
-    });
-
-
-    if (match) {
-
-      Object.keys(changes)
-        .forEach(function(key) {
-
-          var col =
-            headers.indexOf(key);
-
-          if (col !== -1) {
-
-            sheet
-              .getRange(
-                r + 1,
-                col + 1
-              )
-              .setValue(
-                changes[key]
-              );
-
-          }
-
-        });
-
-      return;
-
-    }
-
-  }
-
-  throw new Error(
-    'Rekod tidak ditemui untuk dikemaskini.'
-  );
-
-}
-function TEST_HEAT_INFO() {
-
-  var year = getActiveYear_();
-
-  var events =
-    getSheetObjects_(SHEETS.EVENTS)
-      .filter(function(e) {
-        return Number(e.YEAR) === Number(year) &&
-               String(e.ACTIVE || 'TRUE')
-                 .toUpperCase() !== 'FALSE';
-      });
-
-  var trackEvent =
-    events.find(function(e) {
-      return String(e.LANE_EVENT || '')
-        .toUpperCase() === 'TRUE';
-    });
-
-  if (!trackEvent) {
-    throw new Error(
-      'Tiada acara trek ditemui dalam EVENTS.'
-    );
-  }
-
-  var result =
-    getHeatInfo(
-      year,
-      trackEvent.EVENT_ID
-    );
-
-  Logger.log(
-    JSON.stringify(
-      result,
-      null,
-      2
-    )
-  );
-
-  return result;
-}
-function TEST_ALL_HEAT_INFO() {
-
-  var year = getActiveYear_();
-
-  var events =
-    getSheetObjects_(SHEETS.EVENTS)
-      .filter(function(e) {
-
-        return Number(e.YEAR) === Number(year) &&
-               String(e.ACTIVE || 'TRUE')
-                 .toUpperCase() !== 'FALSE' &&
-               String(e.LANE_EVENT || '')
-                 .toUpperCase() === 'TRUE';
-
-      });
-
-  var result = events.map(function(e) {
-
-    var info =
-      getHeatInfo(
-        year,
-        e.EVENT_ID
-      );
-
-    return {
-      eventId: e.EVENT_ID,
-      eventName: e.NAME || e.EVENT_NAME || '',
-      participantCount: info.participantCount,
-      screeningRequired: info.screeningRequired,
-      heatCount: info.heatCount
-    };
-
-  });
-
-  Logger.log(
-    JSON.stringify(
-      result,
-      null,
-      2
-    )
-  );
-
-  return result;
-}
-function TEST_PARTICIPANTS() {
-
-  var year = getActiveYear_();
-
-  var participants =
-    getSheetObjects_(SHEETS.PARTICIPANTS);
-
-  var result =
-    participants.filter(function(p) {
-
-      return Number(p.YEAR) === Number(year);
-
-    }).map(function(p) {
-
-      return {
-        year: p.YEAR,
-        eventId: p.EVENT_ID,
-        muridId: p.MURID_ID,
-        houseId: p.HOUSE_ID,
-        status: p.STATUS
-      };
-
-    });
-
-  Logger.log(
-    JSON.stringify(
-      {
-        year: year,
-        total: result.length,
-        participants: result
-      },
-      null,
-      2
-    )
-  );
-
-  return result;
-}
-function TEST_GENERATE_HEATS() {
-
-  var year = getActiveYear_();
-
-  var events =
-    getSheetObjects_(SHEETS.EVENTS)
-      .filter(function(e) {
-
-        return Number(e.YEAR) === Number(year) &&
-               String(e.ACTIVE || 'TRUE')
-                 .toUpperCase() !== 'FALSE' &&
-               String(e.LANE_EVENT || '')
-                 .toUpperCase() === 'TRUE';
-
-      });
-
-  if (!events.length) {
-    throw new Error(
-      'Tiada acara trek ditemui.'
-    );
-  }
-
-  var event = events[0];
-
-  var result =
-    generateHeats(
-      year,
-      event.EVENT_ID
-    );
-
-  Logger.log(
-    JSON.stringify(
-      result,
-      null,
-      2
-    )
-  );
-
-  return result;
-}
-function getScreeningEvents(year) {
-
-  requireStaff_();
-
-  year = Number(year || getActiveYear_());
-
-  var events =
-    getSheetObjects_(SHEETS.EVENTS);
-
-  var result = [];
-
-  events.forEach(function(event) {
-
-    if (
-      Number(event.YEAR) !== year ||
-      String(event.ACTIVE || 'TRUE').toUpperCase() === 'FALSE' ||
-      String(event.LANE_EVENT || '').toUpperCase() !== 'TRUE'
-    ) {
-      return;
-    }
-
-    var count =
-      getTrackParticipantCount(
-        year,
-        event.EVENT_ID
-      );
-
-    if (count > CONFIG.LANE_COUNT) {
-
-      result.push({
-
-        id:
-          String(event.EVENT_ID),
-
-        name:
-          String(
-            event.NAME ||
-            event.EVENT_NAME ||
-            ''
-          ),
-
-        participantCount:
-          count,
-
-        heatCount:
-          Math.ceil(
-            count / CONFIG.LANE_COUNT
-          ),
-
-        screeningRequired:
-          true
-
-      });
-
-    }
-
-  });
-
-  return result;
-}
-function getScreeningData(year, eventId) {
-
-  requireStaff_();
-
-  year = Number(year || getActiveYear_());
-  eventId = String(eventId || '');
-
-  if (!eventId) {
-    throw new Error(
-      'Acara tidak dipilih.'
-    );
-  }
-
-  var heatRows =
-    listHeats(
-      year,
-      eventId
-    );
-
-  if (!heatRows.length) {
-
-    return {
-      ok: true,
-      year: year,
-      eventId: eventId,
-      heats: [],
-      participantCount: 0,
-      heatCount: 0
-    };
-
-  }
-
+  const callback =
+    '__sskam_cb_' +
+    (++apiSeq) +
+    '_' +
+    Date.now();
+
+  const script =
+    document.createElement('script');
+
+  let finished = false;
 
   /*
-   * Ambil semua murid.
+   * Kita naikkan timeout daripada 20 saat
+   * kepada 60 saat kerana sesetengah operasi
+   * Google Sheet mengambil masa lebih lama.
    */
-  var students =
-    getSheetObjects_(SHEETS.STUDENTS);
+  const timer = setTimeout(function() {
 
+    if (finished) return;
 
-  /*
-   * Ambil semua rumah.
-   */
-  var houses =
-    getSheetObjects_(SHEETS.HOUSES);
+    finished = true;
 
+    cleanup();
 
-  /*
-   * Buat lookup murid.
-   */
-  var studentMap = {};
-
-  students.forEach(function(student) {
-
-    studentMap[
-      String(student.MURID_ID)
-    ] = student;
-
-  });
-
-
-  /*
-   * Buat lookup rumah.
-   */
-  var houseMap = {};
-
-  houses.forEach(function(house) {
-
-    houseMap[
-      String(
-        house.HOUSE_ID ||
-        house.ID ||
-        house.id
+    (failure || function() {})(
+      new Error(
+        'Sambungan API mengambil masa terlalu lama. ' +
+        'Sila cuba Segar semula.'
       )
-    ] = house;
+    );
 
-  });
-
-
-  /*
-   * Tambahkan nama murid
-   * dan nama rumah.
-   */
-  var enriched =
-    heatRows.map(function(row) {
-
-      var student =
-        studentMap[
-          String(row.muridId)
-        ] || {};
-
-      var house =
-        houseMap[
-          String(row.houseId)
-        ] || {};
+  }, 60000);
 
 
-      return {
+  function cleanup() {
 
-        muridId:
-          row.muridId,
+    clearTimeout(timer);
 
-        name:
-          String(
-            student.NAME ||
-            student.NAMA ||
-            student.name ||
-            ''
-          ),
+    try {
+      delete window[callback];
+    } catch(e) {}
 
-        className:
-          String(
-            student.CLASS_NAME ||
-            student.CLASS ||
-            student.className ||
-            ''
-          ),
+    if (script.parentNode) {
+      script.parentNode.removeChild(script);
+    }
 
-        grade:
-          String(
-            student.GRADE ||
-            student.DARJAH ||
-            student.grade ||
-            ''
-          ),
-
-        gender:
-          String(
-            student.GENDER ||
-            student.JANTINA ||
-            student.gender ||
-            ''
-          ),
-
-        houseId:
-          row.houseId,
-
-        houseName:
-          String(
-            house.NAME ||
-            house.NAMA ||
-            house.name ||
-            row.houseId
-          ),
-
-        heatNo:
-          row.heatNo,
-
-        lane:
-          row.lane,
-
-        position:
-          row.position || '',
-
-        time:
-          row.time || '',
-
-        qualified:
-          row.qualified || '',
-
-        status:
-          row.status || 'ACTIVE'
-
-      };
-
-    });
+  }
 
 
   /*
-   * Kumpulkan mengikut heat.
+   * Callback JSONP
    */
-  var heatMap = {};
+  window[callback] = function(payload) {
 
-  enriched.forEach(function(row) {
+    if (finished) return;
 
-    var key =
-      String(row.heatNo);
+    finished = true;
 
-    if (!heatMap[key]) {
+    cleanup();
 
-      heatMap[key] = [];
+
+    if (!payload) {
+
+      (failure || function(){})(
+        new Error('API tidak mengembalikan data.')
+      );
+
+      return;
+    }
+
+
+    if (payload.ok === true) {
+
+      (success || function(){})(
+        payload.data
+      );
+
+      return;
 
     }
 
-    heatMap[key].push(row);
 
-  });
+    /*
+     * API mengembalikan ralat
+     */
+    (failure || function(){})(
+      new Error(
+        payload.message ||
+        'Ralat API.'
+      )
+    );
+
+  };
 
 
-  var heats =
-    Object.keys(heatMap)
-      .sort(function(a, b) {
-        return Number(a) - Number(b);
+  /*
+   * Bina parameter API
+   */
+  const params =
+    new URLSearchParams();
+
+
+  params.set(
+    'api',
+    '1'
+  );
+
+  params.set(
+    'action',
+    String(action || '')
+  );
+
+  params.set(
+    'email',
+    String(API_EMAIL || '')
+  );
+
+  params.set(
+    'args',
+    encodeApiArgs(
+      args || []
+    )
+  );
+
+  params.set(
+    'callback',
+    callback
+  );
+
+
+  const separator =
+    API_URL.indexOf('?') >= 0
+      ? '&'
+      : '?';
+
+
+  script.src =
+    API_URL +
+    separator +
+    params.toString();
+
+
+  /*
+   * Jika browser gagal memuatkan
+   * script JSONP.
+   */
+  script.onerror = function() {
+
+    if (finished) return;
+
+    finished = true;
+
+    cleanup();
+
+    (failure || function(){})(
+      new Error(
+        'Tidak dapat menghubungi Google Apps Script.'
+      )
+    );
+
+  };
+
+
+  /*
+   * Debug untuk sementara.
+   * Boleh dilihat melalui F12 → Console.
+   */
+  console.log(
+    '[API REQUEST]',
+    action,
+    args
+  );
+
+  console.log(
+    '[API URL]',
+    script.src
+  );
+
+
+  document.head.appendChild(
+    script
+  );
+
+}
+
+  function makeRun(success, failure) {
+    const chain = {
+      withSuccessHandler: function(fn){ return makeRun(fn, failure); },
+      withFailureHandler: function(fn){ return makeRun(success, fn); }
+    };
+    return new Proxy(chain, { get: function(target, prop) {
+      if (prop in target) return target[prop];
+      return function(){
+        const args = Array.prototype.slice.call(arguments);
+        apiRequest(prop, args, success, failure);
+      };
+    }});
+  }
+  window.google = window.google || {};
+  window.google.script = window.google.script || {};
+  window.google.script.run = makeRun(null, null);
+
+  let currentUser = null;
+  let currentYear = null;
+  let events = [];
+
+  function start() {
+    if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
+      alert('Sila tetapkan API_URL dalam Index.html kepada URL Web App Apps Script.');
+      return;
+    }
+    const savedEmail = localStorage.getItem('sskam_email');
+    const email = savedEmail || prompt('Email Google yang didaftarkan dalam USERS:');
+    if (!email) return;
+    API_EMAIL = email.trim().toLowerCase();
+    localStorage.setItem('sskam_email', API_EMAIL);
+
+    google.script.run
+      .withSuccessHandler(function(response) {
+        if (!response || !response.ok) { alert(response && response.message ? response.message : 'Gagal login.'); return; }
+        currentUser = response.user;
+currentYear = response.dashboard.year;
+events = response.events || [];
+
+setUserInterface();
+renderDashboardData(response.dashboard);
+populateEventSelects();
+loadRegistrationHouses();
       })
-      .map(function(key) {
-
-        return {
-
-          heatNo:
-            Number(key),
-
-          participants:
-            heatMap[key]
-              .sort(function(a, b) {
-
-                return Number(a.lane) -
-                       Number(b.lane);
-
-              })
-
-        };
-
-      });
-
-
-  return {
-
-    ok: true,
-
-    year:
-      year,
-
-    eventId:
-      eventId,
-
-    participantCount:
-      enriched.length,
-
-    heatCount:
-      heats.length,
-
-    heats:
-      heats
-
-  };
-
-}
-function createScreening(year, eventId) {
-
-  requireStaff_();
-
-  year =
-    Number(
-      year || getActiveYear_()
-    );
-
-  eventId =
-    String(eventId || '');
-
-
-  var info =
-    getHeatInfo(
-      year,
-      eventId
-    );
-
-
-  if (!info.screeningRequired) {
-
-    throw new Error(
-      'Acara ini tidak memerlukan saringan. ' +
-      'Jumlah peserta: ' +
-      info.participantCount
-    );
-
+      .withFailureHandler(function(error) { alert('Ralat sambungan: ' + error.message); })
+      .getBootstrap();
   }
 
+  function setUserInterface() {
+    const name = currentUser.name || "Pengguna";
+    const role = currentUser.role || "Pengguna";
 
-  var result =
-    generateHeats(
-      year,
-      eventId
-    );
+    document.getElementById("profileName").textContent = name;
+    document.getElementById("profileRole").textContent = role;
+    document.getElementById("avatar").textContent = name.charAt(0).toUpperCase();
 
+    document.getElementById("welcomeText").textContent =
+      "Selamat datang, " + name + ". Berikut ialah ringkasan sistem sukan semasa.";
 
-  return {
+    
 
-    ok: true,
-
-    message:
-      'Saringan berjaya dijana.',
-
-    year:
-      year,
-
-    eventId:
-      eventId,
-
-    participantCount:
-      result.participantCount,
-
-    heatCount:
-      result.heatCount
-
-  };
-
-}
-function finalizeScreening(year, eventId) {
-
-  requireStaff_();
-
-  year =
-    Number(
-      year || getActiveYear_()
-    );
-
-  eventId =
-    String(eventId || '');
-
-
-  var result =
-    qualifyTop8ByTime(
-      year,
-      eventId
-    );
-
-
-  if (!result.qualifiedCount) {
-
-    throw new Error(
-      'Tiada peserta yang layak ke final.'
-    );
-
+    const adminNav = Array.from(document.querySelectorAll(".nav button"))
+      .find(function(btn){ return btn.textContent.indexOf("Admin") !== -1; });
+    if (adminNav) adminNav.style.display = isAdmin() ? "flex" : "none";
   }
 
-
-  return {
-
-    ok: true,
-
-    message:
-      result.qualifiedCount +
-      ' peserta layak ke final.',
-
-    year:
-      year,
-
-    eventId:
-      eventId,
-
-    qualifiedCount:
-      result.qualifiedCount,
-
-    participants:
-      result.participants
-
-  };
-
-}
-function getFinalists(year, eventId) {
-
-  requireStaff_();
-
-  year =
-    Number(
-      year || getActiveYear_()
-    );
-
-  eventId =
-    String(eventId || '');
-
-
-  var finalists =
-    getQualifiedFinalists(
-      year,
-      eventId
-    );
-
-
-  var students =
-    getSheetObjects_(SHEETS.STUDENTS);
-
-  var houses =
-    getSheetObjects_(SHEETS.HOUSES);
-
-
-  var studentMap = {};
-
-  students.forEach(function(student) {
-
-    studentMap[
-      String(student.MURID_ID)
-    ] = student;
-
-  });
-
-
-  var houseMap = {};
-
-  houses.forEach(function(house) {
-
-    houseMap[
-      String(
-        house.HOUSE_ID ||
-        house.ID ||
-        house.id
-      )
-    ] = house;
-
-  });
-
-
-  return finalists.map(function(row) {
-
-    var student =
-      studentMap[
-        String(row.muridId)
-      ] || {};
-
-    var house =
-      houseMap[
-        String(row.houseId)
-      ] || {};
-
-
-    return {
-
-      muridId:
-        row.muridId,
-
-      name:
-        String(
-          student.NAME ||
-          student.NAMA ||
-          ''
-        ),
-
-      className:
-        String(
-          student.CLASS_NAME ||
-          student.CLASS ||
-          ''
-        ),
-
-      grade:
-        String(
-          student.GRADE ||
-          student.DARJAH ||
-          ''
-        ),
-
-      houseId:
-        row.houseId,
-
-      houseName:
-        String(
-          house.NAME ||
-          house.NAMA ||
-          row.houseId
-        ),
-
-      heatNo:
-        row.heatNo,
-
-      originalLane:
-        row.lane,
-
-      time:
-        row.time,
-
-      qualified:
-        'YES'
-
-    };
-
-  });
-
-}
-function TEST_SCREENING_DATA() {
-
-  var year =
-    getActiveYear_();
-
-  var events =
-    getScreeningEvents(
-      year
-    );
-
-
-  Logger.log(
-    JSON.stringify(
-      events,
-      null,
-      2
-    )
-  );
-
-
-  if (!events.length) {
-
-    throw new Error(
-      'Tiada acara yang memerlukan saringan.'
-    );
-
+  function renderDashboardData(data) {
+    currentYear = data.year;
+    document.getElementById("statYear").textContent = data.year;
+    document.getElementById("statHouses").textContent = data.houses.length;
+    document.getElementById("statEvents").textContent = data.eventCount || 0;
+    renderHouseCards(data.houses);
+    renderHouseTable(data.houses);
+    renderSummary(data.houses);
   }
 
-
-  var event =
-    events[0];
-
-
-  var data =
-    getScreeningData(
-      year,
-      event.id
-    );
-
-
-  Logger.log(
-    JSON.stringify(
-      data,
-      null,
-      2
-    )
-  );
-
-
-  return data;
-
-}
-function saveScreeningTimes(data) {
-
-  requireStaff_();
-
-  if (!data) {
-    throw new Error('Data keputusan tidak diterima.');
+  function loadDashboard() {
+    google.script.run
+      .withSuccessHandler(renderDashboardData)
+      .withFailureHandler(function(error) { console.error(error); })
+      .getDashboard();
   }
 
-  var year = Number(data.year);
-  var eventId = String(data.eventId || '');
-  var results = data.results || [];
+  function renderHouseCards(houses) {
+    const container = document.getElementById("houseCards");
 
-  if (!year || !eventId) {
-    throw new Error('Tahun atau acara tidak sah.');
-  }
-
-  if (!results.length) {
-    throw new Error('Tiada keputusan untuk disimpan.');
-  }
-
-  var sheet =
-    SpreadsheetApp.getActiveSpreadsheet()
-      .getSheetByName(SHEETS.HEATS);
-
-  if (!sheet) {
-    throw new Error('Sheet HEATS tidak ditemui.');
-  }
-
-  var values =
-    sheet.getDataRange().getValues();
-
-  if (values.length < 2) {
-    throw new Error('Tiada data HEATS.');
-  }
-
-  var headers = values[0];
-
-  var col = {};
-
-  headers.forEach(function(h, i) {
-    col[String(h).trim()] = i;
-  });
-
-  if (col.TIME === undefined) {
-    throw new Error(
-      'Column TIME tidak ditemui dalam HEATS.'
-    );
-  }
-
-  if (col.MURID_ID === undefined) {
-    throw new Error(
-      'Column MURID_ID tidak ditemui dalam HEATS.'
-    );
-  }
-
-  if (col.EVENT_ID === undefined) {
-    throw new Error(
-      'Column EVENT_ID tidak ditemui dalam HEATS.'
-    );
-  }
-
-  if (col.YEAR === undefined) {
-    throw new Error(
-      'Column YEAR tidak ditemui dalam HEATS.'
-    );
-  }
-
-  var resultMap = {};
-
-  results.forEach(function(item) {
-
-    var muridId =
-      String(item.muridId || '');
-
-    var time =
-      String(item.time || '').trim();
-
-    if (!muridId) return;
-
-    if (!time) return;
-
-    resultMap[muridId] = time;
-
-  });
-
-  var updated = 0;
-
-  for (var r = 1; r < values.length; r++) {
-
-    var rowYear =
-      Number(values[r][col.YEAR]);
-
-    var rowEvent =
-      String(values[r][col.EVENT_ID]);
-
-    var muridId =
-      String(values[r][col.MURID_ID]);
-
-    if (
-      rowYear === year &&
-      rowEvent === eventId &&
-      resultMap[muridId] !== undefined
-    ) {
-
-      sheet
-        .getRange(
-          r + 1,
-          col.TIME + 1
-        )
-        .setValue(
-          resultMap[muridId]
-        );
-
-      updated++;
-
+    if (!houses.length) {
+      container.innerHTML = '<div class="empty">Tiada rumah aktif.</div>';
+      return;
     }
 
+    const colors = ["#c0392b", "#2471a3", "#229954", "#d4ac0d"];
+
+    container.innerHTML = houses.map(function(h, index) {
+      return `
+        <div class="house">
+          <div class="house-bar" style="background:${colors[index % colors.length]}"></div>
+          <div class="house-rank">#${h.rank}</div>
+          <div class="house-name">${escapeHtml(h.name)}</div>
+          <div class="house-points">
+            ${h.points}
+            <span style="font-size:11px;color:#6b7785">MATA</span>
+          </div>
+          <div class="medals">
+            🥇 ${h.gold}
+            &nbsp; 🥈 ${h.silver}
+            &nbsp; 🥉 ${h.bronze}
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
-  return {
-    ok: true,
-    updated: updated,
-    message:
-      updated +
-      ' keputusan masa berjaya disimpan.'
-  };
+  function renderHouseTable(houses) {
+    const body = document.getElementById("houseTable");
 
-}
-function TEST_SAVE_SCREENING_TIME() {
+    if (!houses.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">Tiada data.</td></tr>';
+      return;
+    }
 
-  var year = getActiveYear_();
-
-  var events =
-    getScreeningEvents(year);
-
-  if (!events.length) {
-    throw new Error(
-      'Tiada acara saringan.'
-    );
+    body.innerHTML = houses.map(function(h) {
+      return `
+        <tr>
+          <td><strong>#${h.rank}</strong></td>
+          <td><strong>${escapeHtml(h.name)}</strong></td>
+          <td><strong>${h.points}</strong></td>
+          <td>${h.gold}</td>
+          <td>${h.silver}</td>
+          <td>${h.bronze}</td>
+        </tr>
+      `;
+    }).join("");
   }
 
-  var event = events[0];
+  function renderSummary(houses) {
+    const total = houses.reduce(function(sum, h) {
+      return sum + Number(h.points || 0);
+    }, 0);
 
-  var data =
-    getScreeningData(
-      year,
-      event.id
-    );
+    document.getElementById("summary").innerHTML = `
+      <div style="padding:12px 0;border-bottom:1px solid #e5eaf0">
+        <div style="font-size:11px;color:#6b7785">JUMLAH MATA</div>
+        <div style="font-size:28px;font-weight:900;margin-top:5px">${total}</div>
+      </div>
 
-  if (!data.heats.length) {
-    throw new Error(
-      'Tiada heat ditemui.'
-    );
+      <div style="padding:12px 0">
+        <div style="font-size:11px;color:#6b7785">RUMAH TEMPAT PERTAMA</div>
+        <div style="font-size:18px;font-weight:900;margin-top:5px">
+          ${houses.length ? escapeHtml(houses[0].name) : "-"}
+        </div>
+        <div style="font-size:12px;color:#6b7785">
+          ${houses.length ? houses[0].points + " mata" : ""}
+        </div>
+      </div>
+    `;
   }
 
-  var first =
-    data.heats[0].participants[0];
-
-  if (!first) {
-    throw new Error(
-      'Tiada peserta ditemui.'
-    );
+  function loadEvents(force) {
+    if (!force && events && events.length) { populateEventSelects(); return; }
+    google.script.run
+      .withSuccessHandler(function(data) { events = data || []; document.getElementById("statEvents").textContent = events.length; populateEventSelects(); })
+      .withFailureHandler(function(error) { console.error(error); })
+      .listEvents(currentYear);
   }
+function loadRegistrationHouses() {
 
-  var result =
-    saveScreeningTimes({
+  google.script.run
+    .withSuccessHandler(function(houses) {
 
-      year: year,
+      const select =
+        document.getElementById("registrationHouse");
 
-      eventId: event.id,
+      if (!select) return;
 
-      results: [
+      houses = houses || [];
 
-        {
-          muridId: first.muridId,
+      /*
+       * ADMIN
+       * Boleh memilih mana-mana rumah.
+       */
+      if (
+        currentUser &&
+        String(currentUser.role).toUpperCase() === "ADMIN"
+      ) {
 
-          time: '15.00'
+        select.innerHTML =
+          '<option value="">Pilih rumah sukan...</option>' +
+          houses.map(function(h) {
+
+            return `
+              <option value="${escapeAttr(h.id)}">
+                ${escapeHtml(h.name)}
+              </option>
+            `;
+
+          }).join("");
+
+        select.disabled = false;
+
+        return;
+      }
+
+
+      /*
+       * GURU RUMAH
+       * Rumah ditetapkan secara automatik.
+       */
+      if (
+        currentUser &&
+        currentUser.houseId
+      ) {
+
+        const house =
+          houses.find(function(h) {
+
+            return String(h.id) ===
+                   String(currentUser.houseId);
+
+          });
+
+
+        if (house) {
+
+          select.innerHTML =
+            `<option value="${escapeAttr(house.id)}">
+              ${escapeHtml(house.name)}
+            </option>`;
+
+          select.value =
+            house.id;
+
+          select.disabled = true;
+
         }
 
-      ]
+      }
+
+    })
+    .withFailureHandler(function(error) {
+
+      const select =
+        document.getElementById("registrationHouse");
+
+      if (select) {
+
+        select.innerHTML =
+          '<option value="">Gagal memuatkan rumah</option>';
+
+      }
+
+      console.error(error);
+
+    })
+    .listHouses(currentYear);
+}
+  function populateEventSelects() {
+    const options =
+      '<option value="">Pilih acara...</option>' +
+      events.map(function(e) {
+        return `<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`;
+      }).join("");
+
+    document.getElementById("eventSelect").innerHTML = options;
+    document.getElementById("laneEvent").innerHTML = options;
+    loadScreeningEvents();
+  }
+
+function loadStudents() {
+
+  const eventId =
+    document.getElementById("eventSelect").value;
+
+  const query =
+    document.getElementById("studentSearch").value;
+
+  const list =
+    document.getElementById("studentList");
+
+  const houseSelect =
+    document.getElementById("registrationHouse");
+
+  const houseId =
+    houseSelect ? houseSelect.value : "";
+
+
+  if (!eventId) {
+
+    list.innerHTML =
+      '<div class="empty">' +
+      'Pilih acara terlebih dahulu.' +
+      '</div>';
+
+    return;
+
+  }
+
+
+  if (!houseId) {
+
+    list.innerHTML =
+      '<div class="empty">' +
+      'Sila pilih rumah sukan terlebih dahulu.' +
+      '</div>';
+
+    return;
+
+  }
+
+
+  list.innerHTML =
+    '<div class="empty">Memuatkan murid...</div>';
+
+
+  google.script.run
+
+    .withSuccessHandler(function(data) {
+
+      if (!data || !data.length) {
+
+        list.innerHTML =
+          '<div class="empty">' +
+          'Tiada murid yang sepadan untuk rumah ini.' +
+          '</div>';
+
+        return;
+
+      }
+
+
+      list.innerHTML =
+        data.map(function(s) {
+
+          return `
+            <label class="student">
+
+              <input
+                type="checkbox"
+                value="${escapeAttr(s.id)}"
+                ${s.registered ? "disabled" : ""}
+              >
+
+              <div style="flex:1">
+
+                <div class="student-name">
+                  ${escapeHtml(s.name)}
+                </div>
+
+                <div class="student-meta">
+                  Darjah ${escapeHtml(s.grade)}
+                  • ${escapeHtml(s.className)}
+                  • ${escapeHtml(s.gender)}
+                </div>
+
+              </div>
+
+              ${
+                s.registered
+                  ? '<span class="badge">✓ Sudah daftar</span>'
+                  : ''
+              }
+
+            </label>
+          `;
+
+        }).join("");
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      list.innerHTML =
+        '<div class="empty">' +
+        escapeHtml(error.message) +
+        '</div>';
+
+    })
+
+    .listEligibleStudents(
+      currentYear,
+      eventId,
+      houseId,
+      query
+    );
+}
+
+  function registerParticipants() {
+
+  const eventId =
+    document.getElementById("eventSelect").value;
+
+  const houseId =
+    document.getElementById("registrationHouse").value;
+
+
+  const ids =
+    Array.from(
+      document.querySelectorAll(
+        "#studentList input[type=checkbox]:checked"
+      )
+    ).map(function(input) {
+
+      return input.value;
 
     });
 
-  Logger.log(
-    JSON.stringify(
-      result,
-      null,
-      2
-    )
-  );
 
-  return result;
+  if (!eventId) {
+
+    showMessage(
+      "registrationMessage",
+      "Sila pilih acara.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (!houseId) {
+
+    showMessage(
+      "registrationMessage",
+      "Sila pilih rumah sukan.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (!ids.length) {
+
+    showMessage(
+      "registrationMessage",
+      "Sila pilih sekurang-kurangnya seorang peserta.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  google.script.run
+
+    .withSuccessHandler(function(response) {
+
+      showMessage(
+        "registrationMessage",
+        "✓ " +
+        (response.count || ids.length) +
+        " peserta berjaya didaftarkan.",
+        true
+      );
+
+      loadStudents();
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      showMessage(
+        "registrationMessage",
+        error.message,
+        false
+      );
+
+    })
+
+    .registerParticipants({
+
+      year:
+        currentYear,
+
+      eventId:
+        eventId,
+
+      houseId:
+        houseId,
+
+      muridIds:
+        ids
+
+    });
 
 }
+  function generateLanes() {
+    const eventId = document.getElementById("laneEvent").value;
+    const result = document.getElementById("laneResult");
+
+    if (!eventId) {
+      alert("Sila pilih acara.");
+      return;
+    }
+
+    result.innerHTML =
+      '<div class="empty">🎲 Sedang menjana undian...</div>';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data.length) {
+          result.innerHTML =
+            '<div class="empty">Tiada peserta untuk acara ini.</div>';
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(function(houses) {
+            const houseMap = {};
+            houses.forEach(function(h) {
+              houseMap[h.id] = h.name;
+            });
+
+            result.innerHTML = `
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lorong</th>
+                      <th>Rumah</th>
+                      <th>ID Murid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.map(function(x) {
+                      return `
+                        <tr>
+                          <td><strong style="font-size:16px">${x.lane}</strong></td>
+                          <td><strong>${escapeHtml(houseMap[x.houseId] || x.houseId)}</strong></td>
+                          <td>${escapeHtml(x.muridId)}</td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            `;
+          })
+          .listHouses(currentYear);
+      })
+      .withFailureHandler(function(error) {
+        result.innerHTML =
+          '<div class="message err">' + escapeHtml(error.message) + '</div>';
+      })
+      .generateLanes(currentYear, eventId);
+  }
+
+  function loadIndividualRanking() {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        const body = document.getElementById("individualTable");
+
+        if (!data.length) {
+          body.innerHTML =
+            '<tr><td colspan="8" class="empty">Belum ada keputusan.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = data.map(function(x, index) {
+          return `
+            <tr>
+              <td><strong>#${index + 1}</strong></td>
+              <td>
+                <strong>${escapeHtml(x.name)}</strong>
+                <div style="font-size:10px;color:#6b7785">
+                  ${escapeHtml(x.className || "")}
+                </div>
+              </td>
+              <td>${escapeHtml(x.grade)}</td>
+              <td>${escapeHtml(x.house)}</td>
+              <td><strong>${x.points}</strong></td>
+              <td>${x.gold}</td>
+              <td>${x.silver}</td>
+              <td>${x.bronze}</td>
+            </tr>
+          `;
+        }).join("");
+      })
+      .withFailureHandler(function(error) {
+        console.error(error);
+      })
+      .getIndividualRanking(currentYear);
+  }
+
+
+  /* =========================
+     ADMIN MODULE — FASA 2A
+     ========================= */
+
+  let adminYears = [];
+  let adminHouses = [];
+  let adminStudents = [];
+  let adminEvents = [];
+  let adminUsers = [];
+  let adminPoints = [];
+
+  function isAdmin() {
+    return currentUser && String(currentUser.role).toUpperCase() === "ADMIN";
+  }
+
+  function ensureAdmin() {
+    if (!isAdmin()) {
+      showMessage("adminMsg", "Akses Admin diperlukan.", false);
+      return false;
+    }
+    return true;
+  }
+
+  function showAdminTab(id, button) {
+    document.querySelectorAll(".admin-panel").forEach(function(p){ p.classList.remove("active"); });
+    document.querySelectorAll(".admin-tab").forEach(function(b){ b.classList.remove("active"); });
+    document.getElementById("admin-" + id).classList.add("active");
+    if (button) button.classList.add("active");
+
+    if (id === "years") loadAdminYears();
+    if (id === "houses") loadAdminHouses();
+    if (id === "students") loadAdminStudents();
+    if (id === "events") loadAdminEvents();
+    if (id === "users") loadAdminUsers();
+    if (id === "points") loadAdminPoints();
+  }
+
+  function loadAdminAll() {
+    if (!ensureAdmin()) return;
+    google.script.run
+      .withSuccessHandler(function(data){
+        adminYears=data.years||[]; adminHouses=data.houses||[]; adminEvents=data.events||[]; adminUsers=data.users||[]; adminPoints=data.points||[];
+        currentYear=data.year;
+        renderAdminYears(); renderAdminHouses(); renderAdminEvents(); renderAdminUsers(); renderAdminPoints();
+        document.getElementById('adminActiveYear').textContent='Tahun: '+currentYear;
+        loadAdminStudents();
+      })
+      .withFailureHandler(adminError)
+      .getAdminBootstrap();
+  }
+
+  function renderAdminYears() {
+    document.getElementById('adminYearsTable').innerHTML = adminYears.length ? adminYears.map(function(x){ return '<tr><td><strong>'+x.year+'</strong></td><td>'+escapeHtml(x.name)+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openYearModal('+x.year+')">Edit</button>'+(x.active?'':'<button class="btn btn-light" onclick="activateAdminYear('+x.year+')">Aktifkan</button><button class="btn danger" onclick="deleteAdminYear('+x.year+')">Buang</button>')+'</div></td></tr>'; }).join('') : '<tr><td colspan="4" class="empty">Belum ada tahun.</td></tr>';
+  }
+  function renderAdminHouses() {
+    document.getElementById('adminHousesTable').innerHTML = adminHouses.length ? adminHouses.map(function(x){ return '<tr><td><strong>'+escapeHtml(x.id)+'</strong></td><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+currentYear+'</td><td><span class="badge success">AKTIF</span></td><td><button class="btn btn-light" onclick="openHouseModal(\''+escapeAttr(x.id)+'\')">Edit</button></td></tr>'; }).join('') : '<tr><td colspan="5" class="empty">Tiada rumah aktif.</td></tr>';
+  }
+  function renderAdminEvents() {
+    document.getElementById('adminEventsTable').innerHTML = adminEvents.length ? adminEvents.map(function(x){ return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.category)+'</td><td>'+escapeHtml(x.gender)+'</td><td>'+escapeHtml(x.ageGroup)+'</td><td>'+(x.laneEvent?'Ya':'Tidak')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openEventModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminEvent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>'; }).join('') : '<tr><td colspan="6" class="empty">Tiada acara aktif.</td></tr>';
+  }
+  function renderAdminUsers() {
+    document.getElementById('adminUsersTable').innerHTML = adminUsers.length ? adminUsers.map(function(x){ var hn=adminHouses.find(function(h){return String(h.id)===String(x.houseId);}); return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.email)+'</td><td>'+escapeHtml(x.role)+'</td><td>'+escapeHtml(hn?hn.name:(x.houseId||'-'))+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><button class="btn btn-light" onclick="openUserModal(\''+escapeAttr(x.email)+'\')">Edit</button></td></tr>'; }).join('') : '<tr><td colspan="6" class="empty">Tiada pengguna.</td></tr>';
+  }
+  function renderAdminPoints() { var map={}; adminPoints.forEach(function(x){map[x.position]=x;}); document.getElementById('adminPointsTable').innerHTML=Array.from({length:8},function(_,i){var p=i+1,x=map[p]||{points:0,medal:''};return '<tr><td><strong>'+p+'</strong></td><td><input type="number" min="0" id="point-'+p+'" value="'+Number(x.points||0)+'" style="max-width:120px"></td><td><select id="medal-'+p+'" style="max-width:180px"><option value="">-</option><option '+(x.medal==='EMAS'?'selected':'')+'>EMAS</option><option '+(x.medal==='PERAK'?'selected':'')+'>PERAK</option><option '+(x.medal==='GANGSA'?'selected':'')+'>GANGSA</option></select></td></tr>';}).join(''); }
+
+  function loadAdminYears() {
+    google.script.run.withSuccessHandler(function(data){
+      adminYears = data || [];
+      document.getElementById("adminActiveYear").textContent =
+        "Tahun: " + (adminYears.find(function(x){return x.active;})?.year || currentYear || "-");
+
+      var selects = ["adminStudentYear","adminEventYear"];
+      selects.forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        var selected = Number(el.value || currentYear);
+        el.innerHTML = adminYears.map(function(x){
+          return '<option value="'+x.year+'" '+(Number(x.year)===selected?'selected':'')+'>'+escapeHtml(x.year+' — '+x.name)+'</option>';
+        }).join("");
+      });
+
+      document.getElementById("adminYearsTable").innerHTML = adminYears.length ? adminYears.map(function(x){
+        return '<tr>' +
+          '<td><strong>'+x.year+'</strong></td>' +
+          '<td>'+escapeHtml(x.name)+'</td>' +
+          '<td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td>' +
+          '<td><div class="admin-actions">' +
+          '<button class="btn btn-light" onclick="openYearModal('+x.year+')">Edit</button>' +
+          (x.active ? '' : '<button class="btn btn-light" onclick="activateAdminYear('+x.year+')">Aktifkan</button><button class="btn danger" onclick="deleteAdminYear('+x.year+')">Buang</button>') +
+          '</div></td></tr>';
+      }).join("") : '<tr><td colspan="4" class="empty">Belum ada tahun.</td></tr>';
+    }).withFailureHandler(adminError).listYears();
+  }
+
+  function activateAdminYear(year) {
+    if (!ensureAdmin()) return;
+    if (!confirm("Jadikan " + year + " sebagai tahun aktif?")) return;
+    google.script.run.withSuccessHandler(function(){
+      currentYear = year;
+      loadDashboard();
+      loadEvents();
+      loadAdminAll();
+      showMessage("adminMsg","Tahun "+year+" telah diaktifkan.",true);
+    }).withFailureHandler(adminError).setActiveYear(year);
+  }
+
+  function deleteAdminYear(year) {
+    if (!ensureAdmin()) return;
+    if (!confirm("Buang tahun " + year + "? Rekod operasi lain tidak dipadam, tetapi tahun ini tidak lagi boleh dipilih.")) return;
+    google.script.run.withSuccessHandler(loadAdminAll).withFailureHandler(adminError).deleteYear(year);
+  }
+
+  function openYearModal(year) {
+    if (!ensureAdmin()) return;
+    var item = adminYears.find(function(x){return Number(x.year)===Number(year);});
+    var isEdit = !!item;
+    openAdminModal(isEdit ? "Edit Tahun" : "Tambah Tahun", `
+      <div class="form-grid">
+        <div class="field"><label>TAHUN</label><input id="mYear" type="number" min="2000" value="${item ? item.year : (new Date().getFullYear())}" ${isEdit?'disabled':''}></div>
+        <div class="field"><label>NAMA KEJOHANAN</label><input id="mYearName" value="${escapeAttr(item ? item.name : 'Sukan Tahunan '+(new Date().getFullYear()))}"></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label><input id="mYearActive" type="checkbox" ${item?.active?'checked':''}> Jadikan tahun aktif</label></div>
+    `, function(){
+      var y = Number(document.getElementById("mYear").value);
+      var name = document.getElementById("mYearName").value.trim();
+      var active = document.getElementById("mYearActive").checked;
+      google.script.run.withSuccessHandler(function(){
+        closeAdminModal(); currentYear = active ? y : currentYear; loadAdminAll(); loadDashboard(); loadEvents();
+      }).withFailureHandler(adminError).saveYear({year:y,name:name,active:active});
+    });
+  }
+
+  function loadAdminHouses() {
+    var y = Number(currentYear || getAdminSelectedYear());
+    google.script.run.withSuccessHandler(function(data){
+      adminHouses = data || [];
+      document.getElementById("adminHousesTable").innerHTML = adminHouses.length ? adminHouses.map(function(x){
+        return '<tr><td><strong>'+escapeHtml(x.id)+'</strong></td><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+y+'</td><td><span class="badge success">AKTIF</span></td><td><button class="btn btn-light" onclick="openHouseModal(\''+escapeAttr(x.id)+'\')">Edit</button></td></tr>';
+      }).join("") : '<tr><td colspan="5" class="empty">Tiada rumah aktif untuk tahun ini.</td></tr>';
+    }).withFailureHandler(adminError).listHouses(y);
+  }
+
+  function openHouseModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminHouses.find(function(x){return String(x.id)===String(id);});
+    var houseId = item ? item.id : "";
+    openAdminModal(item ? "Edit Rumah Sukan" : "Tambah Rumah Sukan", `
+      <div class="form-grid">
+        <div class="field"><label>ID RUMAH</label><input id="mHouseId" value="${escapeAttr(houseId)}" placeholder="H1" ${item?'disabled':''}></div>
+        <div class="field"><label>NAMA RUMAH</label><input id="mHouseName" value="${escapeAttr(item ? item.name : '')}" placeholder="Contoh: Rumah Merah"></div>
+      </div>
+    `, function(){
+      var hid = document.getElementById("mHouseId").value.trim();
+      var name = document.getElementById("mHouseName").value.trim();
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminHouses();loadDashboard();}).withFailureHandler(adminError)
+        .saveHouse({year:Number(currentYear),id:hid,name:name,active:true});
+    });
+  }
+
+  function loadAdminStudents() {
+    var y = Number(document.getElementById("adminStudentYear")?.value || currentYear);
+    var q = document.getElementById("adminStudentSearch")?.value || "";
+    google.script.run.withSuccessHandler(function(data){
+      adminStudents = data || [];
+      var houses = adminHouses || [];
+      document.getElementById("adminStudentsTable").innerHTML = adminStudents.length ? adminStudents.map(function(x){
+        var hn = houses.find(function(h){return String(h.id)===String(x.houseId);});
+        return '<tr>' +
+          '<td>'+escapeHtml(x.id)+'</td><td><strong>'+escapeHtml(x.name)+'</strong></td>' +
+          '<td>'+escapeHtml(x.grade)+'</td><td>'+escapeHtml(x.className)+'</td><td>'+escapeHtml(x.gender)+'</td>' +
+          '<td>'+escapeHtml(hn ? hn.name : (x.houseId || '-'))+'</td>' +
+          '<td><div class="admin-actions"><button class="btn btn-light" onclick="openStudentModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminStudent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>';
+      }).join("") : '<tr><td colspan="7" class="empty">Tiada murid ditemui.</td></tr>';
+    }).withFailureHandler(adminError).listStudents(q,y);
+  }
+
+  function openStudentModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminStudents.find(function(x){return String(x.id)===String(id);});
+    var houses = adminHouses || [];
+    var houseOptions = '<option value="">-- Belum ditetapkan --</option>' + houses.map(function(h){
+      return '<option value="'+escapeAttr(h.id)+'" '+(item && String(item.houseId)===String(h.id)?'selected':'')+'>'+escapeHtml(h.name)+'</option>';
+    }).join("");
+    openAdminModal(item ? "Edit Murid" : "Tambah Murid", `
+      <div class="form-grid">
+        <div class="field"><label>ID MURID</label><input id="mStudentId" value="${escapeAttr(item ? item.id : '')}" placeholder="Contoh: M001" ${item?'disabled':''}></div>
+        <div class="field"><label>NAMA PENUH</label><input id="mStudentName" value="${escapeAttr(item ? item.name : '')}"></div>
+        <div class="field"><label>NO. KP</label><input id="mStudentKp" value="${escapeAttr(item ? item.noKp : '')}"></div>
+        <div class="field"><label>DARJAH</label><select id="mStudentGrade">
+          <option value="">Pilih...</option>${['1','2','3','4','5','6'].map(function(g){return '<option '+(item&&String(item.grade)===g?'selected':'')+' value="'+g+'">Darjah '+g+'</option>';}).join("")}
+        </select></div>
+        <div class="field"><label>KELAS</label><input id="mStudentClass" value="${escapeAttr(item ? item.className : '')}"></div>
+        <div class="field"><label>JANTINA</label><select id="mStudentGender"><option value="">Pilih...</option><option '+(item&&item.gender==='Lelaki'?'selected':'')+'>Lelaki</option><option '+(item&&item.gender==='Perempuan'?'selected':'')+'>Perempuan</option></select></div>
+        <div class="field"><label>RUMAH TAHUN ${currentYear}</label><select id="mStudentHouse">${houseOptions}</select></div>
+      </div>
+    `, function(){
+      var data = {
+        id:document.getElementById("mStudentId").value.trim() || ("M"+Date.now()),
+        name:document.getElementById("mStudentName").value.trim(),
+        noKp:document.getElementById("mStudentKp").value.trim(),
+        grade:document.getElementById("mStudentGrade").value,
+        className:document.getElementById("mStudentClass").value.trim(),
+        gender:document.getElementById("mStudentGender").value,
+        houseId:document.getElementById("mStudentHouse").value,
+        year:Number(currentYear),
+        active:true
+      };
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminStudents();}).withFailureHandler(adminError).saveStudent(data);
+    });
+  }
+
+  function deactivateAdminStudent(id) {
+    if (!confirm("Nyahaktifkan murid ini?")) return;
+    google.script.run.withSuccessHandler(loadAdminStudents).withFailureHandler(adminError).deactivateStudent(id);
+  }
+
+  function downloadStudentTemplate() {
+    var csv = "MURID_ID,NAME,NO_KP,GRADE,CLASS_NAME,GENDER,HOUSE_ID\nM001,Ali bin Abu,,6,6 Al-Farabi,Lelaki,H1\nM002,Siti binti Ahmad,,6,6 Al-Farabi,Perempuan,H2\n";
+    var blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "template_murid_sukan.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importStudentCsv(input) {
+    if (!ensureAdmin() || !input.files.length) return;
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var rows = parseCsv(e.target.result);
+        if (rows.length < 2) throw new Error("CSV tiada data murid.");
+        var headers = rows[0].map(function(x){return x.trim().toUpperCase();});
+        var data = rows.slice(1).filter(function(r){return r.some(function(x){return String(x).trim();});}).map(function(r){
+          var o={}; headers.forEach(function(h,i){o[h]=String(r[i]||"").trim();}); return o;
+        });
+        google.script.run.withSuccessHandler(function(res){
+          showMessage("studentImportMsg","Berjaya import "+res.count+" murid.",true);
+          input.value=""; loadAdminStudents();
+        }).withFailureHandler(adminError).importStudents(data);
+      } catch(err) { showMessage("studentImportMsg",err.message,false); input.value=""; }
+    };
+    reader.readAsText(file);
+  }
+
+  function parseCsv(text) {
+    var rows=[], row=[], field="", quoted=false;
+    for (var i=0;i<text.length;i++) {
+      var c=text[i], n=text[i+1];
+      if (c==='"') {
+        if (quoted && n==='"') { field+='"'; i++; }
+        else quoted=!quoted;
+      } else if (c===',' && !quoted) { row.push(field); field=""; }
+      else if ((c==='\n' || c==='\r') && !quoted) {
+        if (c==='\r' && n==='\n') i++;
+        row.push(field); field="";
+        if (row.length && row.some(function(x){return x!=="";})) rows.push(row);
+        row=[];
+      } else field+=c;
+    }
+    if (field!=="" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function loadAdminEvents() {
+    var y = Number(document.getElementById("adminEventYear")?.value || currentYear);
+    google.script.run.withSuccessHandler(function(data){
+      adminEvents = data || [];
+      document.getElementById("adminEventsTable").innerHTML = adminEvents.length ? adminEvents.map(function(x){
+        return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.category)+'</td><td>'+escapeHtml(x.gender)+'</td><td>'+escapeHtml(x.ageGroup)+'</td><td>'+(x.laneEvent?'Ya':'Tidak')+'</td><td><div class="admin-actions"><button class="btn btn-light" onclick="openEventModal(\''+escapeAttr(x.id)+'\')">Edit</button><button class="btn danger" onclick="deactivateAdminEvent(\''+escapeAttr(x.id)+'\')">Buang</button></div></td></tr>';
+      }).join("") : '<tr><td colspan="6" class="empty">Tiada acara aktif.</td></tr>';
+    }).withFailureHandler(adminError).listEvents(y);
+  }
+
+  function openEventModal(id) {
+    if (!ensureAdmin()) return;
+    var item = adminEvents.find(function(x){return String(x.id)===String(id);});
+    var y = Number(document.getElementById("adminEventYear")?.value || currentYear);
+    openAdminModal(item ? "Edit Acara" : "Tambah Acara", `
+      <div class="form-grid">
+        <div class="field"><label>NAMA ACARA</label><input id="mEventName" value="${escapeAttr(item ? item.name : '')}" placeholder="100 Meter"></div>
+        <div class="field"><label>KATEGORI</label><select id="mEventCategory">${['TREK','PADANG','LAIN'].map(function(v){return '<option '+(item&&item.category===v?'selected':'')+'>'+v+'</option>';}).join("")}</select></div>
+        <div class="field"><label>JANTINA</label><select id="mEventGender">${['Lelaki','Perempuan','Campuran'].map(function(v){return '<option '+(item&&item.gender===v?'selected':'')+'>'+v+'</option>';}).join("")}</select></div>
+        <div class="field"><label>DARJAH / KUMPULAN</label><input id="mEventAge" value="${escapeAttr(item ? item.ageGroup : '')}" placeholder="Darjah 6"></div>
+        <div class="field"><label><input id="mEventLane" type="checkbox" ${item?.laneEvent?'checked':''}> Acara menggunakan lorong</label></div>
+      </div>
+    `, function(){
+      var data={id:item?item.id:"",year:y,name:document.getElementById("mEventName").value.trim(),category:document.getElementById("mEventCategory").value,gender:document.getElementById("mEventGender").value,ageGroup:document.getElementById("mEventAge").value.trim(),laneEvent:document.getElementById("mEventLane").checked,active:true};
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminEvents();loadEvents();loadDashboard();}).withFailureHandler(adminError).saveEvent(data);
+    });
+  }
+
+  function deactivateAdminEvent(id) {
+    if (!confirm("Nyahaktifkan acara ini?")) return;
+    google.script.run.withSuccessHandler(function(){loadAdminEvents();loadEvents();loadDashboard();}).withFailureHandler(adminError).deactivateEvent(id);
+  }
+
+  function loadAdminUsers() {
+    google.script.run.withSuccessHandler(function(data){
+      adminUsers=data||[];
+      document.getElementById("adminUsersTable").innerHTML = adminUsers.length ? adminUsers.map(function(x){
+        var hn=(adminHouses||[]).find(function(h){return String(h.id)===String(x.houseId);});
+        return '<tr><td><strong>'+escapeHtml(x.name)+'</strong></td><td>'+escapeHtml(x.email)+'</td><td>'+escapeHtml(x.role)+'</td><td>'+escapeHtml(hn?hn.name:(x.houseId||'-'))+'</td><td>'+(x.active?'<span class="badge success">AKTIF</span>':'<span class="badge">Tidak aktif</span>')+'</td><td><button class="btn btn-light" onclick="openUserModal(\''+escapeAttr(x.email)+'\')">Edit</button></td></tr>';
+      }).join("") : '<tr><td colspan="6" class="empty">Tiada pengguna.</td></tr>';
+    }).withFailureHandler(adminError).listUsers();
+  }
+
+  function openUserModal(email) {
+    if (!ensureAdmin()) return;
+    var item=adminUsers.find(function(x){return String(x.email).toLowerCase()===String(email||"").toLowerCase();});
+    var houses=adminHouses||[];
+    var houseOptions='<option value="">-- Tiada rumah --</option>'+houses.map(function(h){return '<option value="'+escapeAttr(h.id)+'" '+(item&&String(item.houseId)===String(h.id)?'selected':'')+'>'+escapeHtml(h.name)+'</option>';}).join("");
+    openAdminModal(item ? "Edit Pengguna" : "Tambah Pengguna", `
+      <div class="form-grid">
+        <div class="field"><label>EMAIL GOOGLE</label><input id="mUserEmail" value="${escapeAttr(item?item.email:'')}" ${item?'disabled':''} placeholder="guru@sekolah.edu.my"></div>
+        <div class="field"><label>NAMA</label><input id="mUserName" value="${escapeAttr(item?item.name:'')}"></div>
+        <div class="field"><label>PERANAN</label><select id="mUserRole"><option value="GURU_RUMAH" ${item&&item.role==='GURU_RUMAH'?'selected':''}>GURU RUMAH</option><option value="URUS_SETIA" ${item&&item.role==='URUS_SETIA'?'selected':''}>URUS SETIA</option><option value="ADMIN" ${item&&item.role==='ADMIN'?'selected':''}>ADMIN</option></select></div>
+        <div class="field"><label>RUMAH</label><select id="mUserHouse">${houseOptions}</select></div>
+        <div class="field"><label><input id="mUserActive" type="checkbox" ${!item||item.active?'checked':''}> Akaun aktif</label></div>
+      </div>
+    `, function(){
+      var data={email:document.getElementById("mUserEmail").value.trim(),name:document.getElementById("mUserName").value.trim(),role:document.getElementById("mUserRole").value,houseId:document.getElementById("mUserHouse").value,active:document.getElementById("mUserActive").checked};
+      google.script.run.withSuccessHandler(function(){closeAdminModal();loadAdminUsers();}).withFailureHandler(adminError).saveUser(data);
+    });
+  }
+
+  function loadAdminPoints() {
+    google.script.run.withSuccessHandler(function(data){
+      adminPoints=data||[];
+      var map={}; adminPoints.forEach(function(x){map[x.position]=x;});
+      document.getElementById("adminPointsTable").innerHTML = Array.from({length:8},function(_,i){
+        var p=i+1, x=map[p]||{points:0,medal:""};
+        return '<tr><td><strong>'+p+'</strong></td><td><input type="number" min="0" id="point-'+p+'" value="'+Number(x.points||0)+'" style="max-width:120px"></td><td><select id="medal-'+p+'" style="max-width:180px"><option value="">-</option><option '+(x.medal==='EMAS'?'selected':'')+'>EMAS</option><option '+(x.medal==='PERAK'?'selected':'')+'>PERAK</option><option '+(x.medal==='GANGSA'?'selected':'')+'>GANGSA</option></select></td></tr>';
+      }).join("");
+    }).withFailureHandler(adminError).listPoints();
+  }
+
+  function saveAllPoints() {
+    if (!ensureAdmin()) return;
+    var jobs=[];
+    for(var p=1;p<=8;p++){
+      jobs.push({position:p,points:Number(document.getElementById("point-"+p).value||0),medal:document.getElementById("medal-"+p).value});
+    }
+    var done=0;
+    jobs.forEach(function(x){
+      google.script.run.withSuccessHandler(function(){
+        done++; if(done===jobs.length){showMessage("pointsMsg","Semua tetapan mata berjaya disimpan.",true);loadAdminPoints();}
+      }).withFailureHandler(adminError).savePoint(x);
+    });
+  }
+
+  function getAdminSelectedYear() {
+    return Number(document.getElementById("adminStudentYear")?.value || currentYear || new Date().getFullYear());
+  }
+
+  function openAdminModal(title, body, saveFn) {
+    document.getElementById("modalTitle").textContent=title;
+    document.getElementById("modalBody").innerHTML=body;
+    document.getElementById("modalSaveBtn").onclick=saveFn;
+    document.getElementById("adminModal").classList.add("show");
+  }
+
+  function closeAdminModal() {
+    document.getElementById("adminModal").classList.remove("show");
+  }
+
+  function adminError(error) {
+    showMessage("adminMsg", error && error.message ? error.message : String(error), false);
+  }
+
+
+
+  /* =========================
+     SARINGAN TREK — FASA 3B
+     ========================= */
+  let screeningEvents = [];
+  let screeningData = null;
+
+  function loadScreeningEvents() {
+    const select = document.getElementById("screeningEvent");
+    if (!select || !currentYear) return;
+    select.innerHTML = '<option value="">Memuatkan acara trek...</option>';
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        screeningEvents = data || [];
+        if (!screeningEvents.length) {
+          select.innerHTML = '<option value="">Tiada acara trek</option>';
+          return;
+        }
+        select.innerHTML = '<option value="">Pilih acara trek...</option>' +
+          screeningEvents.map(function(e) {
+            const label = e.screeningRequired
+              ? e.name + ' — ' + e.participantCount + ' peserta • ' + e.heatCount + ' heat'
+              : e.name + ' — ' + e.participantCount + ' peserta • terus final';
+            return '<option value="' + escapeAttr(e.id) + '">' + escapeHtml(label) + '</option>';
+          }).join("");
+      })
+      .withFailureHandler(function(error) {
+        select.innerHTML = '<option value="">Gagal memuatkan acara</option>';
+        console.error(error);
+      })
+      .listScreeningEvents(currentYear);
+  }
+
+  function loadScreeningEvent() {
+    const eventId = document.getElementById("screeningEvent").value;
+    const info = document.getElementById("screeningInfo");
+    const actions = document.getElementById("screeningActions");
+    const heats = document.getElementById("screeningHeats");
+    const status = document.getElementById("screeningStatus");
+    info.innerHTML = ""; actions.innerHTML = ""; heats.innerHTML = ""; screeningData = null;
+
+    if (!eventId) { status.textContent = "Pilih acara"; return; }
+    const event = screeningEvents.find(function(e){ return String(e.id) === String(eventId); });
+    if (!event) { status.textContent = "Acara tidak ditemui"; return; }
+
+    status.textContent = event.screeningRequired ? "Saringan diperlukan" : "Terus final";
+    info.innerHTML = '<div class="screening-stats">' +
+      '<div class="screening-stat"><span>Peserta</span><strong>' + Number(event.participantCount||0) + '</strong></div>' +
+      '<div class="screening-stat"><span>Heat</span><strong>' + Number(event.heatCount||0) + '</strong></div>' +
+      '<div class="screening-stat"><span>Slot Final</span><strong>8</strong></div>' +
+      '</div>';
+
+    if (event.screeningRequired) {
+      actions.innerHTML =
+        '<button class="btn btn-gold" onclick="generateScreeningWeb()">🎲 Jana Saringan</button>' +
+        '<button class="btn btn-light" onclick="loadExistingScreening()">↻ Papar Saringan</button>';
+    } else {
+      actions.innerHTML = '<div class="message ok" style="display:block">Acara ini mempunyai 8 peserta atau kurang. Saringan tidak diperlukan. Gunakan <strong>Undian Lorong</strong> untuk final.</div>';
+    }
+  }
+
+  function generateScreeningWeb() {
+    const eventId = document.getElementById("screeningEvent").value;
+    if (!eventId) return alert("Sila pilih acara trek.");
+    if (!confirm("Jana semula saringan untuk acara ini?")) return;
+    document.getElementById("screeningHeats").innerHTML = '<div class="card"><div class="empty">🎲 Menjana heat...</div></div>';
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        alert(result && result.message ? result.message : "Saringan berjaya dijana.");
+        loadExistingScreening();
+      })
+      .withFailureHandler(function(error) {
+        document.getElementById("screeningHeats").innerHTML = '<div class="card"><div class="message err" style="display:block">' + escapeHtml(error.message || String(error)) + '</div></div>';
+      })
+      .createScreening(currentYear, eventId);
+  }
+
+  function loadExistingScreening() {
+    const eventId = document.getElementById("screeningEvent").value;
+    if (!eventId) return alert("Sila pilih acara trek.");
+    document.getElementById("screeningHeats").innerHTML = '<div class="card"><div class="empty">Memuatkan heat...</div></div>';
+    google.script.run
+      .withSuccessHandler(function(data){ screeningData=data||{}; renderScreeningHeats(screeningData); })
+      .withFailureHandler(function(error){ document.getElementById("screeningHeats").innerHTML='<div class="card"><div class="message err" style="display:block">'+escapeHtml(error.message||String(error))+'</div></div>'; })
+      .getScreeningData(currentYear, eventId);
+  }
+
+  function renderScreeningHeats(data) {
+    const container=document.getElementById("screeningHeats");
+    if (!data || !data.heats || !data.heats.length) {
+      container.innerHTML='<div class="card"><div class="empty">Tiada heat dijana. Klik <strong>Jana Saringan</strong>.</div></div>';
+      return;
+    }
+    let html='';
+    data.heats.forEach(function(heat){
+      html += '<div class="card screening-heat"><div class="card-header"><div><div class="card-title">🏃 HEAT '+escapeHtml(heat.heatNo)+'</div><div class="card-sub">'+heat.participants.length+' peserta</div></div></div>';
+      html += '<div class="table-wrap"><table><thead><tr><th>Lorong</th><th>Peserta</th><th>Kelas</th><th>Rumah</th><th>Masa (s)</th></tr></thead><tbody>';
+      heat.participants.forEach(function(p){
+        html += '<tr><td><strong style="font-size:16px">'+escapeHtml(p.lane)+'</strong></td>'+
+          '<td><strong>'+escapeHtml(p.name||p.muridId)+'</strong><div style="font-size:10px;color:#6b7785">'+escapeHtml(p.muridId)+'</div></td>'+
+          '<td>'+escapeHtml(p.className||'-')+'</td><td>'+escapeHtml(p.houseName||p.houseId||'-')+'</td>'+
+          '<td><input class="screening-time" type="number" min="0" step="0.01" data-murid="'+escapeAttr(p.muridId)+'" value="'+escapeAttr(p.time||'')+'" placeholder="0.00"></td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    });
+    html += '<div class="card"><div class="actions" style="margin-top:0">' +
+      '<button class="btn btn-primary" onclick="saveAllScreeningTimesWeb()">💾 Simpan Masa</button>' +
+      '<button class="btn btn-gold" onclick="finalizeScreeningWeb()">🏆 Tentukan 8 Final</button>' +
+      '</div><div style="font-size:11px;color:#6b7785;margin-top:10px">Masukkan masa dalam saat, contoh <strong>14.82</strong>.</div></div>';
+    container.innerHTML=html;
+  }
+
+  function saveAllScreeningTimesWeb() {
+    if (!screeningData) return alert("Sila papar saringan dahulu.");
+    const results=Array.from(document.querySelectorAll('.screening-time')).map(function(x){return {muridId:x.dataset.murid,time:x.value.trim()};}).filter(function(x){return x.time!=='';});
+    if (!results.length) return alert("Tiada masa dimasukkan.");
+    google.script.run
+      .withSuccessHandler(function(result){ alert(result.message||'Keputusan disimpan.'); loadExistingScreening(); })
+      .withFailureHandler(function(error){ alert('Ralat: '+(error.message||String(error))); })
+      .saveScreeningTimes({year:currentYear,eventId:screeningData.eventId||document.getElementById('screeningEvent').value,results:results});
+  }
+
+  function finalizeScreeningWeb() {
+    if (!screeningData) return alert("Sila papar saringan dahulu.");
+    if (!confirm("Tentukan 8 peserta terpantas ke final?")) return;
+    google.script.run
+      .withSuccessHandler(function(result){ showScreeningFinalists(result); })
+      .withFailureHandler(function(error){ alert('Ralat: '+(error.message||String(error))); })
+      .finalizeScreening({year:currentYear,eventId:screeningData.eventId||document.getElementById('screeningEvent').value});
+  }
+
+  function showScreeningFinalists(result) {
+    const list=(result&&result.participants)||[];
+    if (!list.length) return alert('Tiada peserta final.');
+    let html='<div class="card screening-final"><div class="card-header"><div><div class="card-title">🏆 8 PESERTA TERPANTAS KE FINAL</div><div class="card-sub">Gunakan Undian Lorong untuk menentukan 8 lorong final.</div></div></div>';
+    html+='<div class="table-wrap"><table><thead><tr><th>#</th><th>Peserta</th><th>Rumah</th><th>Masa</th></tr></thead><tbody>';
+    list.forEach(function(p,i){ html+='<tr><td><strong>'+(i+1)+'</strong></td><td><strong>'+escapeHtml(p.name||p.muridId)+'</strong><div style="font-size:10px;color:#6b7785">'+escapeHtml(p.muridId)+'</div></td><td>'+escapeHtml(p.houseName||p.houseId||'-')+'</td><td><strong>'+escapeHtml(p.time)+' s</strong></td></tr>'; });
+    html+='</tbody></table></div></div>';
+    document.getElementById('screeningHeats').insertAdjacentHTML('afterbegin',html);
+  }
+
+  function showSection(id, button) {
+    document.querySelectorAll(".section").forEach(function(section) {
+      section.classList.remove("active");
+    });
+
+    const target = document.getElementById(id);
+    if (target) target.classList.add("active");
+
+    document.querySelectorAll(".nav button").forEach(function(btn) {
+      btn.classList.remove("active");
+    });
+
+    if (button) button.classList.add("active");
+
+    const titles = {
+      dashboard: ["Dashboard", "Ringkasan keseluruhan kejohanan"],
+      registration: ["Daftar Peserta", "Pendaftaran peserta mengikut rumah sukan"],
+      screening: ["Saringan Trek", "Pengurusan saringan acara trek"],
+      lanes: ["Undian Lorong", "Penjanaan lorong secara automatik"],
+      results: ["Keputusan", "Rekod keputusan dan mata peserta"],
+      individual: ["Peserta Terbaik", "Ranking peserta berdasarkan mata individu"],
+      "house-ranking": ["Ranking Rumah", "Kedudukan empat rumah sukan"],
+      admin: ["Pentadbiran", "Pengurusan sistem dan data"]
+    };
+
+    if (titles[id]) {
+      document.getElementById("pageTitle").textContent = titles[id][0];
+      document.getElementById("pageSub").textContent = titles[id][1];
+    }
+
+    if (id === "individual") loadIndividualRanking();
+    if (id === "screening") loadScreeningEvents();
+    if (id === "admin") loadAdminAll();
+
+    if (window.innerWidth <= 760) {
+      document.getElementById("sidebar").classList.remove("open");
+    }
+  }
+
+  function toggleSidebar() {
+    document.getElementById("sidebar").classList.toggle("open");
+  }
+
+  function showMessage(id, text, success) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = success ? "message ok" : "message err";
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
+
+  start();
+</script>
+</body>
+</html>
