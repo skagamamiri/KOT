@@ -684,22 +684,59 @@
         </div>
       </section>
 
-      <section class="section" id="results">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">🏅 Keputusan Acara</div>
-              <div class="card-sub">
-                Modul keputusan akan disambungkan selepas modul pendaftaran dan lorong diuji.
-              </div>
-            </div>
-          </div>
+    <section class="section" id="results">
 
-          <div class="empty">
-            Modul keputusan — Fasa seterusnya.
-          </div>
+  <div class="card">
+
+    <div class="card-header">
+
+      <div>
+        <div class="card-title">
+          🏅 Keputusan Final
         </div>
-      </section>
+
+        <div class="card-sub">
+          Masukkan masa 8 finalis mengikut lorong.
+        </div>
+      </div>
+
+    </div>
+
+    <div class="form-grid">
+
+      <div class="field">
+
+        <label>ACARA</label>
+
+        <select id="resultEvent"
+                onchange="loadFinalResult()">
+
+          <option value="">
+            Pilih acara...
+          </option>
+
+        </select>
+
+      </div>
+
+    </div>
+
+    <div id="finalResultMessage"
+         class="message">
+    </div>
+
+    <div id="finalResultArea"
+         style="margin-top:20px">
+
+      <div class="empty">
+        Sila pilih acara.
+      </div>
+
+    </div>
+
+  </div>
+
+</section>
 
       <section class="section" id="individual">
         <div class="card">
@@ -1435,6 +1472,13 @@ function loadRegistrationHouses() {
   document.getElementById(
     "laneEvent"
   ).innerHTML = options;
+
+    var resultEvent =
+  document.getElementById("resultEvent");
+
+if (resultEvent) {
+  resultEvent.innerHTML = options;
+}
 
   loadScreeningEvents();
 }
@@ -2332,6 +2376,615 @@ function loadStudents() {
   }
 
   start();
+
+  /* =========================================================
+   KEPUTUSAN FINAL
+   ========================================================= */
+
+var currentFinalResultData = null;
+
+
+/**
+ * Paparkan senarai acara dalam dropdown keputusan.
+ */
+function populateResultEvents() {
+
+  var select =
+    document.getElementById("resultEvent");
+
+  if (!select) {
+    return;
+  }
+
+  if (!events || !events.length) {
+
+    select.innerHTML =
+      '<option value="">Tiada acara</option>';
+
+    return;
+  }
+
+  select.innerHTML =
+    '<option value="">Pilih acara...</option>' +
+
+    events.map(function(e) {
+
+      var label =
+        e.name || '';
+
+      if (e.gender) {
+        label +=
+          ' — ' + e.gender;
+      }
+
+      if (e.ageGroup) {
+        label +=
+          ' — ' + e.ageGroup;
+      }
+
+      label +=
+        ' — ' + (e.year || currentYear);
+
+      return `
+        <option value="${escapeAttr(e.id)}">
+          ${escapeHtml(label)}
+        </option>
+      `;
+
+    }).join("");
+}
+
+
+/**
+ * Ambil 8 finalis daripada LANES.
+ */
+function loadFinalResult() {
+
+  var eventId =
+    document.getElementById(
+      "resultEvent"
+    ).value;
+
+  var area =
+    document.getElementById(
+      "finalResultArea"
+    );
+
+  var message =
+    document.getElementById(
+      "finalResultMessage"
+    );
+
+  if (!eventId) {
+
+    area.innerHTML =
+      '<div class="empty">Sila pilih acara.</div>';
+
+    message.innerHTML = '';
+
+    currentFinalResultData = null;
+
+    return;
+  }
+
+  area.innerHTML =
+    '<div class="empty">Memuatkan 8 finalis...</div>';
+
+  message.innerHTML = '';
+
+  google.script.run
+
+    .withSuccessHandler(function(data) {
+
+      currentFinalResultData =
+        data;
+
+      renderFinalResult(data);
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      area.innerHTML = '';
+
+      message.innerHTML =
+        '<div class="message error">' +
+        escapeHtml(
+          error.message ||
+          String(error)
+        ) +
+        '</div>';
+
+    })
+
+    .getFinalEventData(
+      currentYear,
+      eventId
+    );
+}
+
+
+/**
+ * Paparkan 8 finalis.
+ */
+function renderFinalResult(data) {
+
+  var area =
+    document.getElementById(
+      "finalResultArea"
+    );
+
+  if (!data ||
+      !data.participants ||
+      !data.participants.length) {
+
+    area.innerHTML =
+      '<div class="empty">' +
+      'Tiada finalis ditemui.' +
+      '</div>';
+
+    return;
+  }
+
+  /*
+   * Jika keputusan sudah disimpan,
+   * paparkan keputusan sahaja.
+   */
+  if (data.completed) {
+
+    renderCompletedFinalResult(data);
+
+    return;
+  }
+
+  var html = '';
+
+  html += `
+    <div style="
+      overflow-x:auto;
+      margin-top:10px;
+    ">
+
+      <table class="data-table">
+
+        <thead>
+
+          <tr>
+            <th>Tempat</th>
+            <th>Lorong</th>
+            <th>Peserta</th>
+            <th>Rumah</th>
+            <th>Masa Final</th>
+          </tr>
+
+        </thead>
+
+        <tbody>
+  `;
+
+  data.participants
+    .sort(function(a, b) {
+
+      return Number(a.lane) -
+             Number(b.lane);
+
+    })
+    .forEach(function(p) {
+
+      html += `
+
+        <tr>
+
+          <td>
+            —
+          </td>
+
+          <td>
+            <strong>
+              ${escapeHtml(
+                String(p.lane)
+              )}
+            </strong>
+          </td>
+
+          <td>
+
+            <strong>
+              ${escapeHtml(
+                p.name
+              )}
+            </strong>
+
+            <div class="student-meta">
+              ${escapeHtml(
+                p.muridId
+              )}
+              •
+              ${escapeHtml(
+                p.grade
+              )}
+              •
+              ${escapeHtml(
+                p.className
+              )}
+            </div>
+
+          </td>
+
+          <td>
+            ${escapeHtml(
+              p.houseName ||
+              p.houseId ||
+              ''
+            )}
+          </td>
+
+          <td>
+
+            <input
+              type="number"
+              class="final-time-input"
+              data-murid-id="${escapeAttr(
+                p.muridId
+              )}"
+              data-lane="${p.lane}"
+              min="0.01"
+              step="0.01"
+              placeholder="00.00"
+              style="
+                width:120px;
+                padding:10px;
+              "
+            >
+
+            <span style="margin-left:4px;">
+              saat
+            </span>
+
+          </td>
+
+        </tr>
+
+      `;
+
+    });
+
+  html += `
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+    <div class="actions"
+         style="margin-top:20px;">
+
+      <button
+        class="btn btn-primary"
+        onclick="saveFinalResult()">
+
+        💾 Simpan Keputusan Final
+
+      </button>
+
+    </div>
+
+    <div class="message"
+         style="margin-top:12px;">
+
+      ⚠️ Selepas disimpan,
+      keputusan akan dikunci.
+
+    </div>
+
+  `;
+
+  area.innerHTML = html;
+}
+
+
+/**
+ * Simpan masa final.
+ */
+function saveFinalResult() {
+
+  if (!currentFinalResultData) {
+
+    alert(
+      "Sila pilih acara dahulu."
+    );
+
+    return;
+  }
+
+  var inputs =
+    Array.from(
+      document.querySelectorAll(
+        ".final-time-input"
+      )
+    );
+
+  if (inputs.length !== 8) {
+
+    alert(
+      "Sistem memerlukan 8 peserta final."
+    );
+
+    return;
+  }
+
+  var rows = [];
+
+  for (var i = 0; i < inputs.length; i++) {
+
+    var input =
+      inputs[i];
+
+    var time =
+      String(
+        input.value || ''
+      ).trim();
+
+    if (!time) {
+
+      alert(
+        "Sila masukkan masa untuk semua 8 peserta."
+      );
+
+      input.focus();
+
+      return;
+    }
+
+    var parsed =
+      parseFloat(
+        time.replace(',', '.')
+      );
+
+    if (
+      isNaN(parsed) ||
+      parsed <= 0
+    ) {
+
+      alert(
+        "Masa tidak sah."
+      );
+
+      input.focus();
+
+      return;
+    }
+
+    rows.push({
+
+      lane:
+        Number(
+          input.dataset.lane
+        ),
+
+      muridId:
+        input.dataset.muridId,
+
+      time:
+        time
+
+    });
+
+  }
+
+  var confirmSave =
+    confirm(
+      "Adakah anda pasti mahu simpan keputusan final?\n\n" +
+      "Selepas disimpan, keputusan akan dikunci."
+    );
+
+  if (!confirmSave) {
+    return;
+  }
+
+  var message =
+    document.getElementById(
+      "finalResultMessage"
+    );
+
+  message.innerHTML =
+    "⏳ Menyimpan keputusan...";
+
+  google.script.run
+
+    .withSuccessHandler(function(result) {
+
+      message.innerHTML =
+        '<div class="message success">' +
+        '✓ Keputusan final berjaya disimpan.' +
+        '</div>';
+
+      /*
+       * Muat semula data.
+       * Backend akan pulangkan completed=true.
+       */
+      loadFinalResult();
+
+    })
+
+    .withFailureHandler(function(error) {
+
+      message.innerHTML =
+        '<div class="message error">' +
+        escapeHtml(
+          error.message ||
+          String(error)
+        ) +
+        '</div>';
+
+    })
+
+    .saveFinalResults({
+
+      year:
+        currentYear,
+
+      eventId:
+        currentFinalResultData.eventId,
+
+      rows:
+        rows
+
+    });
+}
+
+
+/**
+ * Paparkan keputusan yang sudah dikunci.
+ */
+function renderCompletedFinalResult(data) {
+
+  var area =
+    document.getElementById(
+      "finalResultArea"
+    );
+
+  /*
+   * getFinalEventData sekarang menyimpan
+   * position/points/medal tetapi belum menyimpan
+   * masa final dalam return.
+   *
+   * Jadi kita paparkan ranking yang tersedia.
+   */
+
+  var rows =
+    data.participants
+      .filter(function(p) {
+
+        return Number(p.position) > 0;
+
+      })
+      .sort(function(a, b) {
+
+        return Number(a.position) -
+               Number(b.position);
+
+      });
+
+  var html = `
+
+    <div class="message success"
+         style="margin-bottom:15px;">
+
+      🔒 <strong>Keputusan telah dikunci.</strong>
+
+    </div>
+
+    <div style="overflow-x:auto;">
+
+      <table class="data-table">
+
+        <thead>
+
+          <tr>
+            <th>Kedudukan</th>
+            <th>Lorong</th>
+            <th>Peserta</th>
+            <th>Rumah</th>
+            <th>Mata</th>
+            <th>Medal</th>
+          </tr>
+
+        </thead>
+
+        <tbody>
+
+  `;
+
+  rows.forEach(function(p) {
+
+    var medal =
+      p.medal || '';
+
+    var position =
+      Number(p.position);
+
+    var icon = '';
+
+    if (position === 1) {
+      icon = '🥇 ';
+    }
+    else if (position === 2) {
+      icon = '🥈 ';
+    }
+    else if (position === 3) {
+      icon = '🥉 ';
+    }
+
+    html += `
+
+      <tr>
+
+        <td>
+          <strong>
+            ${icon}${position}
+          </strong>
+        </td>
+
+        <td>
+          ${escapeHtml(
+            String(p.lane)
+          )}
+        </td>
+
+        <td>
+          <strong>
+            ${escapeHtml(
+              p.name
+            )}
+          </strong>
+
+          <div class="student-meta">
+            ${escapeHtml(
+              p.muridId
+            )}
+          </div>
+        </td>
+
+        <td>
+          ${escapeHtml(
+            p.houseName ||
+            p.houseId ||
+            ''
+          )}
+        </td>
+
+        <td>
+          ${Number(
+            p.points || 0
+          )}
+        </td>
+
+        <td>
+          ${escapeHtml(
+            medal
+          )}
+        </td>
+
+      </tr>
+
+    `;
+
+  });
+
+  html += `
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  `;
+
+  area.innerHTML = html;
+}
 </script>
 </body>
 </html>
