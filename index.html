@@ -1399,16 +1399,46 @@ function loadRegistrationHouses() {
     .listHouses(currentYear);
 }
   function populateEventSelects() {
-    const options =
-      '<option value="">Pilih acara...</option>' +
-      events.map(function(e) {
-        return `<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`;
-      }).join("");
 
-    document.getElementById("eventSelect").innerHTML = options;
-    document.getElementById("laneEvent").innerHTML = options;
-    loadScreeningEvents();
-  }
+  const options =
+    '<option value="">Pilih acara...</option>' +
+
+    events.map(function(e) {
+
+      var label =
+        e.name || '';
+
+      if (e.gender) {
+        label +=
+          ' — ' + e.gender;
+      }
+
+      if (e.ageGroup) {
+        label +=
+          ' — ' + e.ageGroup;
+      }
+
+      label +=
+        ' — ' + (e.year || currentYear);
+
+      return `
+        <option value="${escapeAttr(e.id)}">
+          ${escapeHtml(label)}
+        </option>
+      `;
+
+    }).join("");
+
+  document.getElementById(
+    "eventSelect"
+  ).innerHTML = options;
+
+  document.getElementById(
+    "laneEvent"
+  ).innerHTML = options;
+
+  loadScreeningEvents();
+}
 
 function loadStudents() {
 
