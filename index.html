@@ -721,7 +721,7 @@
 <button
   type="button"
   id="btnPrintFinal"
-  onclick="printFinalResult()"
+  onclick="printFinalResults()"
   style="
     margin-top:12px;
     background:#d9a441;
@@ -998,14 +998,141 @@
     return btoa(unescape(encodeURIComponent(text)))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
-/**
- * =====================================================
- * CETAK KEPUTUSAN FINAL
- * =====================================================
- */
 
+  /**
+   * Hantar panggilan ke Google Apps Script melalui JSONP.
+   * Penting untuk laman GitHub Pages kerana google.script.run
+   * asal hanya tersedia dalam HTML Service Apps Script.
+   */
+  function apiRequest(action, args, success, failure) {
+    var callback =
+      'sskam_api_cb_' +
+      Date.now() +
+      '_' +
+      (++apiSeq);
 
-  function cleanup() {
+    var script =
+      document.createElement('script');
+
+    var finished = false;
+
+    var timer =
+      setTimeout(function() {
+        if (finished) return;
+
+        finished = true;
+
+        cleanup();
+
+        (failure || function(){})(
+          new Error(
+            'Sambungan ke Google Apps Script mengambil terlalu lama.'
+          )
+        );
+      }, 20000);
+
+    function cleanup() {
+      clearTimeout(timer);
+
+      try {
+        delete window[callback];
+      } catch(e) {}
+
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    }
+
+    window[callback] = function(payload) {
+      if (finished) return;
+
+      finished = true;
+      cleanup();
+
+      if (!payload) {
+        (failure || function(){})(
+          new Error(
+            'API tidak mengembalikan data.'
+          )
+        );
+        return;
+      }
+
+      if (payload.ok === true) {
+        (success || function(){})(
+          payload.data
+        );
+        return;
+      }
+
+      (failure || function(){})(
+        new Error(
+          payload.message ||
+          'Ralat API.'
+        )
+      );
+    };
+
+    var params =
+      new URLSearchParams();
+
+    params.set('api', '1');
+    params.set(
+      'action',
+      String(action || '')
+    );
+    params.set(
+      'email',
+      String(API_EMAIL || '')
+    );
+    params.set(
+      'args',
+      encodeApiArgs(args || [])
+    );
+    params.set(
+      'callback',
+      callback
+    );
+
+    var separator =
+      API_URL.indexOf('?') >= 0
+        ? '&'
+        : '?';
+
+    script.src =
+      API_URL +
+      separator +
+      params.toString();
+
+    script.onerror = function() {
+      if (finished) return;
+
+      finished = true;
+      cleanup();
+
+      (failure || function(){})(
+        new Error(
+          'Tidak dapat menghubungi Google Apps Script.'
+        )
+      );
+    };
+
+    console.log(
+      '[API REQUEST]',
+      action,
+      args
+    );
+
+    document.head.appendChild(script);
+  }
+
+  /**
+   * =====================================================
+   * CETAK KEPUTUSAN FINAL
+   * =====================================================
+   */
+
+  function cleanupLegacy() {
 
     clearTimeout(timer);
 
@@ -1023,139 +1150,6 @@
   /*
    * Callback JSONP
    */
-  window[callback] = function(payload) {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-
-    if (!payload) {
-
-      (failure || function(){})(
-        new Error('API tidak mengembalikan data.')
-      );
-
-      return;
-    }
-
-
-    if (payload.ok === true) {
-
-      (success || function(){})(
-        payload.data
-      );
-
-      return;
-
-    }
-
-
-    /*
-     * API mengembalikan ralat
-     */
-    (failure || function(){})(
-      new Error(
-        payload.message ||
-        'Ralat API.'
-      )
-    );
-
-  };
-
-
-  /*
-   * Bina parameter API
-   */
-  const params =
-    new URLSearchParams();
-
-
-  params.set(
-    'api',
-    '1'
-  );
-
-  params.set(
-    'action',
-    String(action || '')
-  );
-
-  params.set(
-    'email',
-    String(API_EMAIL || '')
-  );
-
-  params.set(
-    'args',
-    encodeApiArgs(
-      args || []
-    )
-  );
-
-  params.set(
-    'callback',
-    callback
-  );
-
-
-  const separator =
-    API_URL.indexOf('?') >= 0
-      ? '&'
-      : '?';
-
-
-  script.src =
-    API_URL +
-    separator +
-    params.toString();
-
-
-  /*
-   * Jika browser gagal memuatkan
-   * script JSONP.
-   */
-  script.onerror = function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    (failure || function(){})(
-      new Error(
-        'Tidak dapat menghubungi Google Apps Script.'
-      )
-    );
-
-  };
-
-
-  /*
-   * Debug untuk sementara.
-   * Boleh dilihat melalui F12 → Console.
-   */
-  console.log(
-    '[API REQUEST]',
-    action,
-    args
-  );
-
-  console.log(
-    '[API URL]',
-    script.src
-  );
-
-
-  document.head.appendChild(
-    script
-  );
-
-}
-
   function makeRun(success, failure) {
     const chain = {
       withSuccessHandler: function(fn){ return makeRun(fn, failure); },
