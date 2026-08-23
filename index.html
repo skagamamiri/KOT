@@ -1008,215 +1008,412 @@ function printFinalResults() {
 
   try {
 
-    // Cari dropdown acara dengan beberapa kemungkinan ID
+    // =====================================================
+    // 1. AMBIL DROPDOWN ACARA YANG SEBENAR
+    // =====================================================
+
     var select =
-      document.getElementById('finalEventSelect') ||
-      document.getElementById('eventSelect') ||
-      document.querySelector('select');
+      document.getElementById('resultEvent');
 
     if (!select) {
-      alert('Dropdown acara tidak ditemui.');
+
+      alert(
+        'Dropdown acara "resultEvent" tidak ditemui.'
+      );
+
+      console.error(
+        'ERROR: Element #resultEvent tidak wujud.'
+      );
+
       return;
     }
+
+
+    // =====================================================
+    // 2. SEMAK ACARA DIPILIH
+    // =====================================================
 
     var selectedOption =
       select.options[select.selectedIndex];
 
     if (!selectedOption) {
-      alert('Sila pilih acara terlebih dahulu.');
+
+      alert(
+        'Sila pilih acara terlebih dahulu.'
+      );
+
       return;
     }
+
 
     var eventId =
-      String(selectedOption.value || '').trim();
+      String(
+        selectedOption.value || ''
+      ).trim();
+
 
     var eventName =
-      String(selectedOption.textContent || '').trim();
+      String(
+        selectedOption.textContent || ''
+      ).trim();
+
 
     if (!eventId) {
-      alert('Acara tidak sah.');
+
+      alert(
+        'Acara tidak sah.'
+      );
+
       return;
     }
 
-    // Ambil jadual keputusan yang sedang dipaparkan
+
+    // =====================================================
+    // 3. AMBIL JADUAL KEPUTUSAN FINAL SAHAJA
+    // =====================================================
+
+    var area =
+      document.getElementById(
+        'finalResultArea'
+      );
+
+
+    if (!area) {
+
+      alert(
+        'Bahagian keputusan final tidak ditemui.'
+      );
+
+      return;
+    }
+
+
     var table =
-      document.querySelector('table');
+      area.querySelector('table');
+
 
     if (!table) {
-      alert('Jadual keputusan final tidak ditemui.');
+
+      alert(
+        'Jadual keputusan final tidak ditemui.'
+      );
+
       return;
     }
+
 
     var rows =
-      table.querySelectorAll('tbody tr');
+      table.querySelectorAll(
+        'tbody tr'
+      );
 
-    if (!rows || rows.length === 0) {
-      alert('Tiada keputusan final untuk dicetak.');
+
+    if (
+      !rows ||
+      rows.length === 0
+    ) {
+
+      alert(
+        'Tiada keputusan final untuk dicetak.'
+      );
+
       return;
     }
 
-    // -----------------------------------------
-    // BINA KANDUNGAN CETAK
-    // -----------------------------------------
+
+    // =====================================================
+    // 4. BINA BARIS UNTUK CETAKAN
+    // =====================================================
 
     var printRows = '';
+
 
     rows.forEach(function(row) {
 
       var cells =
         row.querySelectorAll('td');
 
+
+      // Keputusan lengkap mempunyai
+      // 6 kolum:
+      // Kedudukan
+      // Lorong
+      // Peserta
+      // Rumah
+      // Mata
+      // Medal
+
       if (cells.length < 5) {
         return;
       }
 
+
       var position =
         cells[0].innerText.trim();
+
 
       var lane =
         cells[1].innerText.trim();
 
+
       var participant =
         cells[2].innerText.trim();
+
 
       var house =
         cells[3].innerText.trim();
 
+
       var points =
         cells[4].innerText.trim();
+
 
       var medal =
         cells.length >= 6
           ? cells[5].innerText.trim()
           : '';
 
+
       printRows += `
         <tr>
-          <td>${position}</td>
-          <td>${lane}</td>
-          <td>${participant}</td>
-          <td>${house}</td>
-          <td>${points}</td>
-          <td>${medal}</td>
+
+          <td>
+            ${escapeHtml(position)}
+          </td>
+
+          <td>
+            ${escapeHtml(lane)}
+          </td>
+
+          <td class="participant">
+            ${escapeHtml(participant)}
+          </td>
+
+          <td>
+            ${escapeHtml(house)}
+          </td>
+
+          <td>
+            ${escapeHtml(points)}
+          </td>
+
+          <td>
+            ${escapeHtml(medal)}
+          </td>
+
         </tr>
       `;
+
     });
 
+
     if (!printRows) {
-      alert('Tiada data keputusan untuk dicetak.');
+
+      alert(
+        'Tiada data keputusan untuk dicetak.'
+      );
+
       return;
     }
 
-    // -----------------------------------------
-    // PAPAR WINDOW CETAK
-    // -----------------------------------------
+
+    // =====================================================
+    // 5. BUKA WINDOW CETAK
+    // =====================================================
 
     var printWindow =
-      window.open('', '_blank', 'width=1000,height=800');
+      window.open(
+        '',
+        '_blank',
+        'width=1000,height=800'
+      );
+
 
     if (!printWindow) {
+
       alert(
-        'Window cetakan disekat oleh browser. ' +
+        'Window cetakan disekat oleh browser.\n\n' +
         'Sila benarkan pop-up untuk laman ini.'
       );
+
       return;
     }
+
+
+    // =====================================================
+    // 6. PAPAR FORMAT CETAK
+    // =====================================================
 
     printWindow.document.open();
 
+
     printWindow.document.write(`
+
       <!DOCTYPE html>
-      <html>
+
+      <html lang="ms">
+
       <head>
 
         <meta charset="UTF-8">
 
-        <title>Keputusan Final - ${eventName}</title>
+        <title>
+          Keputusan Final - ${escapeHtml(eventName)}
+        </title>
+
 
         <style>
 
           * {
-            box-sizing: border-box;
+            box-sizing:border-box;
           }
+
 
           body {
-            font-family: Arial, sans-serif;
-            margin: 35px;
-            color: #111;
+
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+
+            margin:35px;
+
+            color:#111;
+
           }
+
 
           .header {
-            text-align: center;
-            margin-bottom: 25px;
+
+            text-align:center;
+
+            margin-bottom:25px;
+
           }
+
 
           .school {
-            font-size: 22px;
-            font-weight: bold;
-            text-transform: uppercase;
+
+            font-size:22px;
+
+            font-weight:bold;
+
+            text-transform:uppercase;
+
           }
+
 
           .title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-top: 8px;
+
+            font-size:20px;
+
+            font-weight:bold;
+
+            margin-top:8px;
+
           }
+
 
           .event {
-            font-size: 17px;
-            margin-top: 8px;
+
+            font-size:17px;
+
+            font-weight:bold;
+
+            margin-top:8px;
+
           }
 
+
           table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 25px;
+
+            width:100%;
+
+            border-collapse:collapse;
+
+            margin-top:25px;
+
           }
+
 
           th,
           td {
-            border: 1px solid #333;
-            padding: 10px 8px;
+
+            border:1px solid #333;
+
+            padding:10px 8px;
+
           }
 
+
           th {
-            background: #eeeeee;
-            text-align: center;
-            font-weight: bold;
+
+            background:#eeeeee;
+
+            text-align:center;
+
+            font-weight:bold;
+
           }
+
 
           td:nth-child(1),
           td:nth-child(2),
           td:nth-child(5),
           td:nth-child(6) {
-            text-align: center;
+
+            text-align:center;
+
           }
+
+
+          .participant {
+
+            text-align:left;
+
+          }
+
 
           .footer {
-            margin-top: 45px;
-            display: flex;
-            justify-content: space-between;
+
+            margin-top:55px;
+
+            display:flex;
+
+            justify-content:space-between;
+
+            gap:80px;
+
           }
+
 
           .signature {
-            width: 250px;
-            text-align: center;
+
+            width:250px;
+
+            text-align:center;
+
           }
 
+
           .line {
-            border-bottom: 1px solid #000;
-            margin-top: 55px;
-            margin-bottom: 8px;
+
+            border-bottom:
+              1px solid #000;
+
+            margin-top:55px;
+
+            margin-bottom:8px;
+
           }
+
 
           @media print {
 
             body {
-              margin: 15mm;
-            }
 
-            button {
-              display: none;
+              margin:15mm;
+
             }
 
           }
@@ -1225,74 +1422,127 @@ function printFinalResults() {
 
       </head>
 
+
       <body>
+
 
         <div class="header">
 
           <div class="school">
+
             SK AGAMA (MIS) MIRI
+
           </div>
+
 
           <div class="title">
+
             KEPUTUSAN FINAL
+
           </div>
 
+
           <div class="event">
-            ${eventName}
+
+            ${escapeHtml(eventName)}
+
           </div>
 
         </div>
+
 
         <table>
 
           <thead>
+
             <tr>
-              <th>KEDUDUKAN</th>
-              <th>LORONG</th>
-              <th>PESERTA</th>
-              <th>RUMAH</th>
-              <th>MATA</th>
-              <th>MEDAL</th>
+
+              <th>
+                KEDUDUKAN
+              </th>
+
+              <th>
+                LORONG
+              </th>
+
+              <th>
+                PESERTA
+              </th>
+
+              <th>
+                RUMAH
+              </th>
+
+              <th>
+                MATA
+              </th>
+
+              <th>
+                MEDAL
+              </th>
+
             </tr>
+
           </thead>
 
+
           <tbody>
+
             ${printRows}
+
           </tbody>
 
         </table>
 
+
         <div class="footer">
 
-          <div class="signature">
-            <div class="line"></div>
-            Ketua Pengadil
-          </div>
 
           <div class="signature">
+
             <div class="line"></div>
-            Setiausaha Sukan
+
+            Ketua Pengadil
+
           </div>
+
+
+          <div class="signature">
+
+            <div class="line"></div>
+
+            Setiausaha Sukan
+
+          </div>
+
 
         </div>
+
 
         <script>
 
           window.onload = function() {
 
             setTimeout(function() {
+
               window.print();
+
             }, 500);
 
           };
 
         <\/script>
 
+
       </body>
+
       </html>
+
     `);
 
+
     printWindow.document.close();
+
 
   } catch (error) {
 
