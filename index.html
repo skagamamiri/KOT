@@ -1004,672 +1004,308 @@
  * =====================================================
  */
 
-function printFinalResult() {
+function printFinalResults() {
 
-  var select = document.getElementById('finalEventSelect');
+  try {
 
-  if (!select) {
-    alert('Dropdown acara tidak ditemui.');
-    return;
-  }
+    // Cari dropdown acara dengan beberapa kemungkinan ID
+    var select =
+      document.getElementById('finalEventSelect') ||
+      document.getElementById('eventSelect') ||
+      document.querySelector('select');
 
-  var eventId = String(select.value || '').trim();
-
-  if (!eventId) {
-    alert('Sila pilih acara terlebih dahulu.');
-    return;
-  }
-
-  var selectedText =
-    select.options[select.selectedIndex]
-      ? select.options[select.selectedIndex].text
-      : '';
-
-  // Cari data final yang sedang dipaparkan
-  google.script.run
-    .withSuccessHandler(function(data) {
-
-      if (!data || !data.ok) {
-        alert('Data keputusan final tidak dapat diperoleh.');
-        return;
-      }
-
-      var participants =
-        data.participants ||
-        data.finalists ||
-        [];
-
-      if (!participants.length) {
-        alert('Tiada keputusan final untuk dicetak.');
-        return;
-      }
-
-      // Susun mengikut kedudukan
-      participants.sort(function(a, b) {
-
-        var pa = Number(a.position || 999);
-        var pb = Number(b.position || 999);
-
-        if (pa !== pb) {
-          return pa - pb;
-        }
-
-        return Number(a.lane || 0) -
-               Number(b.lane || 0);
-      });
-
-      buildFinalPrintWindow(
-        data,
-        participants,
-        selectedText
-      );
-
-    })
-    .withFailureHandler(function(error) {
-
-      console.error(error);
-
-      alert(
-        'Ralat mendapatkan keputusan final:\n' +
-        (error.message || error)
-      );
-
-    })
-    .getFinalResults(
-      dataYearForFinalPrint(),
-      eventId
-    );
-}
-
-
-/**
- * Ambil tahun aktif.
- */
-function dataYearForFinalPrint() {
-
-  // Jika sistem mempunyai fungsi getActiveYear
-  if (typeof ACTIVE_YEAR !== 'undefined') {
-    return Number(ACTIVE_YEAR);
-  }
-
-  // Cuba ambil daripada dropdown acara
-  var select =
-    document.getElementById('finalEventSelect');
-
-  if (select &&
-      select.selectedOptions.length) {
-
-    var text =
-      select.selectedOptions[0].textContent || '';
-
-    var match =
-      text.match(/20\d{2}/);
-
-    if (match) {
-      return Number(match[0]);
+    if (!select) {
+      alert('Dropdown acara tidak ditemui.');
+      return;
     }
-  }
 
-  // Tahun semasa sebagai fallback
-  return new Date().getFullYear();
-}
+    var selectedOption =
+      select.options[select.selectedIndex];
 
+    if (!selectedOption) {
+      alert('Sila pilih acara terlebih dahulu.');
+      return;
+    }
 
-/**
- * Bina dokumen cetakan.
- */
-function buildFinalPrintWindow(
-  data,
-  participants,
-  selectedText
-) {
+    var eventId =
+      String(selectedOption.value || '').trim();
 
-  var printWindow =
-    window.open(
-      '',
-      '_blank',
-      'width=1100,height=800'
-    );
+    var eventName =
+      String(selectedOption.textContent || '').trim();
 
-  if (!printWindow) {
+    if (!eventId) {
+      alert('Acara tidak sah.');
+      return;
+    }
+
+    // Ambil jadual keputusan yang sedang dipaparkan
+    var table =
+      document.querySelector('table');
+
+    if (!table) {
+      alert('Jadual keputusan final tidak ditemui.');
+      return;
+    }
+
+    var rows =
+      table.querySelectorAll('tbody tr');
+
+    if (!rows || rows.length === 0) {
+      alert('Tiada keputusan final untuk dicetak.');
+      return;
+    }
+
+    // -----------------------------------------
+    // BINA KANDUNGAN CETAK
+    // -----------------------------------------
+
+    var printRows = '';
+
+    rows.forEach(function(row) {
+
+      var cells =
+        row.querySelectorAll('td');
+
+      if (cells.length < 5) {
+        return;
+      }
+
+      var position =
+        cells[0].innerText.trim();
+
+      var lane =
+        cells[1].innerText.trim();
+
+      var participant =
+        cells[2].innerText.trim();
+
+      var house =
+        cells[3].innerText.trim();
+
+      var points =
+        cells[4].innerText.trim();
+
+      var medal =
+        cells.length >= 6
+          ? cells[5].innerText.trim()
+          : '';
+
+      printRows += `
+        <tr>
+          <td>${position}</td>
+          <td>${lane}</td>
+          <td>${participant}</td>
+          <td>${house}</td>
+          <td>${points}</td>
+          <td>${medal}</td>
+        </tr>
+      `;
+    });
+
+    if (!printRows) {
+      alert('Tiada data keputusan untuk dicetak.');
+      return;
+    }
+
+    // -----------------------------------------
+    // PAPAR WINDOW CETAK
+    // -----------------------------------------
+
+    var printWindow =
+      window.open('', '_blank', 'width=1000,height=800');
+
+    if (!printWindow) {
+      alert(
+        'Window cetakan disekat oleh browser. ' +
+        'Sila benarkan pop-up untuk laman ini.'
+      );
+      return;
+    }
+
+    printWindow.document.open();
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+
+        <meta charset="UTF-8">
+
+        <title>Keputusan Final - ${eventName}</title>
+
+        <style>
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, sans-serif;
+            margin: 35px;
+            color: #111;
+          }
+
+          .header {
+            text-align: center;
+            margin-bottom: 25px;
+          }
+
+          .school {
+            font-size: 22px;
+            font-weight: bold;
+            text-transform: uppercase;
+          }
+
+          .title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 8px;
+          }
+
+          .event {
+            font-size: 17px;
+            margin-top: 8px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+          }
+
+          th,
+          td {
+            border: 1px solid #333;
+            padding: 10px 8px;
+          }
+
+          th {
+            background: #eeeeee;
+            text-align: center;
+            font-weight: bold;
+          }
+
+          td:nth-child(1),
+          td:nth-child(2),
+          td:nth-child(5),
+          td:nth-child(6) {
+            text-align: center;
+          }
+
+          .footer {
+            margin-top: 45px;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          .signature {
+            width: 250px;
+            text-align: center;
+          }
+
+          .line {
+            border-bottom: 1px solid #000;
+            margin-top: 55px;
+            margin-bottom: 8px;
+          }
+
+          @media print {
+
+            body {
+              margin: 15mm;
+            }
+
+            button {
+              display: none;
+            }
+
+          }
+
+        </style>
+
+      </head>
+
+      <body>
+
+        <div class="header">
+
+          <div class="school">
+            SK AGAMA (MIS) MIRI
+          </div>
+
+          <div class="title">
+            KEPUTUSAN FINAL
+          </div>
+
+          <div class="event">
+            ${eventName}
+          </div>
+
+        </div>
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>KEDUDUKAN</th>
+              <th>LORONG</th>
+              <th>PESERTA</th>
+              <th>RUMAH</th>
+              <th>MATA</th>
+              <th>MEDAL</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${printRows}
+          </tbody>
+
+        </table>
+
+        <div class="footer">
+
+          <div class="signature">
+            <div class="line"></div>
+            Ketua Pengadil
+          </div>
+
+          <div class="signature">
+            <div class="line"></div>
+            Setiausaha Sukan
+          </div>
+
+        </div>
+
+        <script>
+
+          window.onload = function() {
+
+            setTimeout(function() {
+              window.print();
+            }, 500);
+
+          };
+
+        <\/script>
+
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+  } catch (error) {
+
+    console.error(error);
 
     alert(
-      'Popup disekat oleh browser. ' +
-      'Sila benarkan popup untuk laman ini.'
+      'Ralat semasa menyediakan cetakan:\\n\\n' +
+      error.message
     );
 
-    return;
-  }
-
-
-  var rows = '';
-
-
-  participants.forEach(function(p) {
-
-    var position =
-      Number(p.position || 0);
-
-    var medal = '';
-
-    if (position === 1) {
-      medal = '🥇 EMAS';
-    }
-    else if (position === 2) {
-      medal = '🥈 PERAK';
-    }
-    else if (position === 3) {
-      medal = '🥉 GANGSA';
-    }
-
-
-    var time =
-      p.time !== undefined &&
-      p.time !== null &&
-      String(p.time).trim() !== ''
-        ? String(p.time)
-        : '-';
-
-
-    rows += `
-      <tr>
-        <td class="center">
-          ${position || '-'}
-        </td>
-
-        <td class="center">
-          ${p.lane || '-'}
-        </td>
-
-        <td>
-          <strong>
-            ${escapePrintHtml(p.name || p.muridId || '')}
-          </strong>
-          <div class="sub">
-            ${escapePrintHtml(p.muridId || '')}
-          </div>
-        </td>
-
-        <td>
-          ${escapePrintHtml(
-            p.houseName ||
-            p.houseId ||
-            ''
-          )}
-        </td>
-
-        <td class="center time">
-          ${escapePrintHtml(time)}
-        </td>
-
-        <td class="center medal">
-          ${medal}
-        </td>
-      </tr>
-    `;
-  });
-
-
-  var html = `
-
-<!DOCTYPE html>
-
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<title>
-Keputusan Final - ${escapePrintHtml(data.eventName || '')}
-</title>
-
-
-<style>
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-
-  margin: 0;
-
-  padding: 30px;
-
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
-  color: #111;
-
-  background: #fff;
-
-}
-
-
-.print-container {
-
-  max-width: 1000px;
-
-  margin: 0 auto;
-
-}
-
-
-.header {
-
-  text-align: center;
-
-  margin-bottom: 25px;
-
-}
-
-
-.header h1 {
-
-  margin: 0 0 8px;
-
-  font-size: 24px;
-
-  font-weight: 800;
-
-}
-
-
-.header h2 {
-
-  margin: 0 0 14px;
-
-  font-size: 20px;
-
-  font-weight: 700;
-
-}
-
-
-.event-info {
-
-  font-size: 14px;
-
-  line-height: 1.7;
-
-}
-
-
-.event-info strong {
-
-  font-weight: 700;
-
-}
-
-
-table {
-
-  width: 100%;
-
-  border-collapse: collapse;
-
-  margin-top: 25px;
-
-}
-
-
-th {
-
-  background: #102a43;
-
-  color: white;
-
-  padding: 11px 9px;
-
-  border: 1px solid #102a43;
-
-  font-size: 12px;
-
-  text-align: left;
-
-}
-
-
-td {
-
-  padding: 11px 9px;
-
-  border: 1px solid #cbd5e1;
-
-  font-size: 13px;
-
-}
-
-
-.center {
-
-  text-align: center;
-
-}
-
-
-.time {
-
-  font-weight: 800;
-
-  font-size: 15px;
-
-}
-
-
-.medal {
-
-  font-weight: 700;
-
-}
-
-
-.sub {
-
-  margin-top: 3px;
-
-  font-size: 10px;
-
-  color: #666;
-
-}
-
-
-.footer {
-
-  margin-top: 45px;
-
-  display: flex;
-
-  justify-content: space-between;
-
-  gap: 50px;
-
-}
-
-
-.signature {
-
-  width: 45%;
-
-  text-align: center;
-
-}
-
-
-.signature-line {
-
-  margin-top: 60px;
-
-  border-top: 1px solid #111;
-
-  padding-top: 8px;
-
-}
-
-
-.print-date {
-
-  margin-top: 30px;
-
-  font-size: 11px;
-
-  color: #666;
-
-}
-
-
-@media print {
-
-  body {
-
-    padding: 0;
-
-  }
-
-
-  .print-container {
-
-    max-width: none;
-
-  }
-
-
-  .no-print {
-
-    display: none !important;
-
-  }
-
-
-  @page {
-
-    size: A4 portrait;
-
-    margin: 15mm;
-
   }
 
 }
-
-
-</style>
-
-</head>
-
-
-<body>
-
-
-<div class="print-container">
-
-
-  <div class="header">
-
-    <h1>
-      KEJOHANAN OLAHRAGA TAHUNAN
-    </h1>
-
-    <h2>
-      KEPUTUSAN FINAL
-    </h2>
-
-
-    <div class="event-info">
-
-      <strong>Acara:</strong>
-      ${escapePrintHtml(
-        data.eventName || selectedText
-      )}
-
-      <br>
-
-      <strong>Kategori:</strong>
-      ${escapePrintHtml(selectedText)}
-
-      <br>
-
-      <strong>Tahun:</strong>
-      ${escapePrintHtml(
-        String(data.year || '')
-      )}
-
-    </div>
-
-  </div>
-
-
-  <table>
-
-    <thead>
-
-      <tr>
-
-        <th style="width:80px;">
-          Kedudukan
-        </th>
-
-        <th style="width:70px;">
-          Lorong
-        </th>
-
-        <th>
-          Peserta
-        </th>
-
-        <th style="width:150px;">
-          Rumah
-        </th>
-
-        <th style="width:110px;">
-          Masa
-        </th>
-
-        <th style="width:130px;">
-          Pingat
-        </th>
-
-      </tr>
-
-    </thead>
-
-
-    <tbody>
-
-      ${rows}
-
-    </tbody>
-
-  </table>
-
-
-  <div class="print-date">
-
-    Dicetak pada:
-    ${new Date().toLocaleString('ms-MY')}
-
-  </div>
-
-
-  <div class="footer">
-
-    <div class="signature">
-
-      <div class="signature-line">
-
-        Ketua Hakim
-
-      </div>
-
-    </div>
-
-
-    <div class="signature">
-
-      <div class="signature-line">
-
-        Setiausaha Kejohanan
-
-      </div>
-
-    </div>
-
-  </div>
-
-
-</div>
-
-
-<script>
-
-window.onload = function() {
-
-  setTimeout(function() {
-
-    window.print();
-
-  }, 500);
-
-};
-
-<\/script>
-
-
-</body>
-
-</html>
-
-`;
-
-
-  printWindow.document.open();
-
-  printWindow.document.write(html);
-
-  printWindow.document.close();
-
-}
-
-
-/**
- * Elak nama murid / teks
- * merosakkan HTML cetakan.
- */
-function escapePrintHtml(value) {
-
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-  function apiRequest(action, args, success, failure) {
-
-  if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
-    (failure || function(){})(
-      new Error('API_URL belum ditetapkan dalam Index.html.')
-    );
-    return;
-  }
-
-  const callback =
-    '__sskam_cb_' +
-    (++apiSeq) +
-    '_' +
-    Date.now();
-
-  const script =
-    document.createElement('script');
-
-  let finished = false;
-
-  /*
-   * Kita naikkan timeout daripada 20 saat
-   * kepada 60 saat kerana sesetengah operasi
-   * Google Sheet mengambil masa lebih lama.
-   */
-  const timer = setTimeout(function() {
-
-    if (finished) return;
-
-    finished = true;
-
-    cleanup();
-
-    (failure || function() {})(
-      new Error(
-        'Sambungan API mengambil masa terlalu lama. ' +
-        'Sila cuba Segar semula.'
-      )
-    );
-
-  }, 60000);
-
-
   function cleanup() {
 
     clearTimeout(timer);
