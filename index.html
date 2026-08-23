@@ -718,7 +718,22 @@
         </select>
 
       </div>
-
+<button
+  type="button"
+  id="btnPrintFinal"
+  onclick="printFinalResult()"
+  style="
+    margin-top:12px;
+    background:#d9a441;
+    color:#111;
+    border:none;
+    padding:10px 18px;
+    border-radius:8px;
+    font-weight:700;
+    cursor:pointer;
+  ">
+  🖨️ Cetak Keputusan Final
+</button>
     </div>
 
     <div id="finalResultMessage"
@@ -983,7 +998,635 @@
     return btoa(unescape(encodeURIComponent(text)))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
+/**
+ * =====================================================
+ * CETAK KEPUTUSAN FINAL
+ * =====================================================
+ */
 
+function printFinalResult() {
+
+  var select = document.getElementById('finalEventSelect');
+
+  if (!select) {
+    alert('Dropdown acara tidak ditemui.');
+    return;
+  }
+
+  var eventId = String(select.value || '').trim();
+
+  if (!eventId) {
+    alert('Sila pilih acara terlebih dahulu.');
+    return;
+  }
+
+  var selectedText =
+    select.options[select.selectedIndex]
+      ? select.options[select.selectedIndex].text
+      : '';
+
+  // Cari data final yang sedang dipaparkan
+  google.script.run
+    .withSuccessHandler(function(data) {
+
+      if (!data || !data.ok) {
+        alert('Data keputusan final tidak dapat diperoleh.');
+        return;
+      }
+
+      var participants =
+        data.participants ||
+        data.finalists ||
+        [];
+
+      if (!participants.length) {
+        alert('Tiada keputusan final untuk dicetak.');
+        return;
+      }
+
+      // Susun mengikut kedudukan
+      participants.sort(function(a, b) {
+
+        var pa = Number(a.position || 999);
+        var pb = Number(b.position || 999);
+
+        if (pa !== pb) {
+          return pa - pb;
+        }
+
+        return Number(a.lane || 0) -
+               Number(b.lane || 0);
+      });
+
+      buildFinalPrintWindow(
+        data,
+        participants,
+        selectedText
+      );
+
+    })
+    .withFailureHandler(function(error) {
+
+      console.error(error);
+
+      alert(
+        'Ralat mendapatkan keputusan final:\n' +
+        (error.message || error)
+      );
+
+    })
+    .getFinalResults(
+      dataYearForFinalPrint(),
+      eventId
+    );
+}
+
+
+/**
+ * Ambil tahun aktif.
+ */
+function dataYearForFinalPrint() {
+
+  // Jika sistem mempunyai fungsi getActiveYear
+  if (typeof ACTIVE_YEAR !== 'undefined') {
+    return Number(ACTIVE_YEAR);
+  }
+
+  // Cuba ambil daripada dropdown acara
+  var select =
+    document.getElementById('finalEventSelect');
+
+  if (select &&
+      select.selectedOptions.length) {
+
+    var text =
+      select.selectedOptions[0].textContent || '';
+
+    var match =
+      text.match(/20\d{2}/);
+
+    if (match) {
+      return Number(match[0]);
+    }
+  }
+
+  // Tahun semasa sebagai fallback
+  return new Date().getFullYear();
+}
+
+
+/**
+ * Bina dokumen cetakan.
+ */
+function buildFinalPrintWindow(
+  data,
+  participants,
+  selectedText
+) {
+
+  var printWindow =
+    window.open(
+      '',
+      '_blank',
+      'width=1100,height=800'
+    );
+
+  if (!printWindow) {
+
+    alert(
+      'Popup disekat oleh browser. ' +
+      'Sila benarkan popup untuk laman ini.'
+    );
+
+    return;
+  }
+
+
+  var rows = '';
+
+
+  participants.forEach(function(p) {
+
+    var position =
+      Number(p.position || 0);
+
+    var medal = '';
+
+    if (position === 1) {
+      medal = '🥇 EMAS';
+    }
+    else if (position === 2) {
+      medal = '🥈 PERAK';
+    }
+    else if (position === 3) {
+      medal = '🥉 GANGSA';
+    }
+
+
+    var time =
+      p.time !== undefined &&
+      p.time !== null &&
+      String(p.time).trim() !== ''
+        ? String(p.time)
+        : '-';
+
+
+    rows += `
+      <tr>
+        <td class="center">
+          ${position || '-'}
+        </td>
+
+        <td class="center">
+          ${p.lane || '-'}
+        </td>
+
+        <td>
+          <strong>
+            ${escapePrintHtml(p.name || p.muridId || '')}
+          </strong>
+          <div class="sub">
+            ${escapePrintHtml(p.muridId || '')}
+          </div>
+        </td>
+
+        <td>
+          ${escapePrintHtml(
+            p.houseName ||
+            p.houseId ||
+            ''
+          )}
+        </td>
+
+        <td class="center time">
+          ${escapePrintHtml(time)}
+        </td>
+
+        <td class="center medal">
+          ${medal}
+        </td>
+      </tr>
+    `;
+  });
+
+
+  var html = `
+
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>
+Keputusan Final - ${escapePrintHtml(data.eventName || '')}
+</title>
+
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+
+  margin: 0;
+
+  padding: 30px;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  color: #111;
+
+  background: #fff;
+
+}
+
+
+.print-container {
+
+  max-width: 1000px;
+
+  margin: 0 auto;
+
+}
+
+
+.header {
+
+  text-align: center;
+
+  margin-bottom: 25px;
+
+}
+
+
+.header h1 {
+
+  margin: 0 0 8px;
+
+  font-size: 24px;
+
+  font-weight: 800;
+
+}
+
+
+.header h2 {
+
+  margin: 0 0 14px;
+
+  font-size: 20px;
+
+  font-weight: 700;
+
+}
+
+
+.event-info {
+
+  font-size: 14px;
+
+  line-height: 1.7;
+
+}
+
+
+.event-info strong {
+
+  font-weight: 700;
+
+}
+
+
+table {
+
+  width: 100%;
+
+  border-collapse: collapse;
+
+  margin-top: 25px;
+
+}
+
+
+th {
+
+  background: #102a43;
+
+  color: white;
+
+  padding: 11px 9px;
+
+  border: 1px solid #102a43;
+
+  font-size: 12px;
+
+  text-align: left;
+
+}
+
+
+td {
+
+  padding: 11px 9px;
+
+  border: 1px solid #cbd5e1;
+
+  font-size: 13px;
+
+}
+
+
+.center {
+
+  text-align: center;
+
+}
+
+
+.time {
+
+  font-weight: 800;
+
+  font-size: 15px;
+
+}
+
+
+.medal {
+
+  font-weight: 700;
+
+}
+
+
+.sub {
+
+  margin-top: 3px;
+
+  font-size: 10px;
+
+  color: #666;
+
+}
+
+
+.footer {
+
+  margin-top: 45px;
+
+  display: flex;
+
+  justify-content: space-between;
+
+  gap: 50px;
+
+}
+
+
+.signature {
+
+  width: 45%;
+
+  text-align: center;
+
+}
+
+
+.signature-line {
+
+  margin-top: 60px;
+
+  border-top: 1px solid #111;
+
+  padding-top: 8px;
+
+}
+
+
+.print-date {
+
+  margin-top: 30px;
+
+  font-size: 11px;
+
+  color: #666;
+
+}
+
+
+@media print {
+
+  body {
+
+    padding: 0;
+
+  }
+
+
+  .print-container {
+
+    max-width: none;
+
+  }
+
+
+  .no-print {
+
+    display: none !important;
+
+  }
+
+
+  @page {
+
+    size: A4 portrait;
+
+    margin: 15mm;
+
+  }
+
+}
+
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div class="print-container">
+
+
+  <div class="header">
+
+    <h1>
+      KEJOHANAN OLAHRAGA TAHUNAN
+    </h1>
+
+    <h2>
+      KEPUTUSAN FINAL
+    </h2>
+
+
+    <div class="event-info">
+
+      <strong>Acara:</strong>
+      ${escapePrintHtml(
+        data.eventName || selectedText
+      )}
+
+      <br>
+
+      <strong>Kategori:</strong>
+      ${escapePrintHtml(selectedText)}
+
+      <br>
+
+      <strong>Tahun:</strong>
+      ${escapePrintHtml(
+        String(data.year || '')
+      )}
+
+    </div>
+
+  </div>
+
+
+  <table>
+
+    <thead>
+
+      <tr>
+
+        <th style="width:80px;">
+          Kedudukan
+        </th>
+
+        <th style="width:70px;">
+          Lorong
+        </th>
+
+        <th>
+          Peserta
+        </th>
+
+        <th style="width:150px;">
+          Rumah
+        </th>
+
+        <th style="width:110px;">
+          Masa
+        </th>
+
+        <th style="width:130px;">
+          Pingat
+        </th>
+
+      </tr>
+
+    </thead>
+
+
+    <tbody>
+
+      ${rows}
+
+    </tbody>
+
+  </table>
+
+
+  <div class="print-date">
+
+    Dicetak pada:
+    ${new Date().toLocaleString('ms-MY')}
+
+  </div>
+
+
+  <div class="footer">
+
+    <div class="signature">
+
+      <div class="signature-line">
+
+        Ketua Hakim
+
+      </div>
+
+    </div>
+
+
+    <div class="signature">
+
+      <div class="signature-line">
+
+        Setiausaha Kejohanan
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+</div>
+
+
+<script>
+
+window.onload = function() {
+
+  setTimeout(function() {
+
+    window.print();
+
+  }, 500);
+
+};
+
+<\/script>
+
+
+</body>
+
+</html>
+
+`;
+
+
+  printWindow.document.open();
+
+  printWindow.document.write(html);
+
+  printWindow.document.close();
+
+}
+
+
+/**
+ * Elak nama murid / teks
+ * merosakkan HTML cetakan.
+ */
+function escapePrintHtml(value) {
+
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
   function apiRequest(action, args, success, failure) {
 
   if (!API_URL || API_URL.indexOf('PASTE_APPS_SCRIPT') === 0) {
