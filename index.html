@@ -612,11 +612,10 @@
             <div class="empty">Pilih acara terlebih dahulu.</div>
           </div>
 
-          <div class="actions">
-            <button class="btn btn-primary"
-                    onclick="registerParticipants()">
-              ✓ Daftarkan Peserta
-            </button>
+          <button class="btn btn-primary"
+                  onclick="saveParticipantRegistration()">
+            💾 Simpan Pendaftaran
+          </button>
 
             <button class="btn btn-light"
                     onclick="loadStudents()">
@@ -1511,7 +1510,7 @@ function loadStudents() {
               <input
                 type="checkbox"
                 value="${escapeAttr(s.id)}"
-                ${s.registered ? "disabled" : ""}
+                ${s.registered ? "checked" : ""}
               >
 
               <div style="flex:1">
@@ -1558,7 +1557,7 @@ function loadStudents() {
     );
 }
 
-  function registerParticipants() {
+  function saveParticipantRegistration() {
 
   const eventId =
     document.getElementById("eventSelect").value;
@@ -1566,18 +1565,14 @@ function loadStudents() {
   const houseId =
     document.getElementById("registrationHouse").value;
 
-
   const ids =
     Array.from(
       document.querySelectorAll(
         "#studentList input[type=checkbox]:checked"
       )
     ).map(function(input) {
-
       return input.value;
-
     });
-
 
   if (!eventId) {
 
@@ -1588,9 +1583,7 @@ function loadStudents() {
     );
 
     return;
-
   }
-
 
   if (!houseId) {
 
@@ -1601,9 +1594,7 @@ function loadStudents() {
     );
 
     return;
-
   }
-
 
   if (!ids.length) {
 
@@ -1614,9 +1605,15 @@ function loadStudents() {
     );
 
     return;
-
   }
 
+  if (
+    !confirm(
+      "Simpan perubahan pendaftaran peserta ini?"
+    )
+  ) {
+    return;
+  }
 
   google.script.run
 
@@ -1625,8 +1622,8 @@ function loadStudents() {
       showMessage(
         "registrationMessage",
         "✓ " +
-        (response.count || ids.length) +
-        " peserta berjaya didaftarkan.",
+        (response.message ||
+         "Pendaftaran berjaya dikemaskini."),
         true
       );
 
@@ -1638,28 +1635,24 @@ function loadStudents() {
 
       showMessage(
         "registrationMessage",
-        error.message,
+        error.message ||
+        String(error),
         false
       );
 
     })
 
-    .registerParticipants({
+    .updateParticipants({
 
-      year:
-        currentYear,
+      year: currentYear,
 
-      eventId:
-        eventId,
+      eventId: eventId,
 
-      houseId:
-        houseId,
+      houseId: houseId,
 
-      muridIds:
-        ids
+      muridIds: ids
 
     });
-
 }
   function generateLanes() {
     const eventId = document.getElementById("laneEvent").value;
